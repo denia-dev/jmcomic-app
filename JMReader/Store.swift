@@ -922,6 +922,15 @@ final class BlockTagStore: ObservableObject {
     private(set) var authorCache: [String: [String]] = [:]
     private var inFlight: Set<String> = []
     private var persistTask: Task<Void, Never>?
+    /// Filter refresh counter for browse views. The caches above stay
+    /// unpublished (publishing on every learn tore down navigation on
+    /// iOS 27 — the v2.19 bug), but that left grids stale: prefetch could
+    /// learn a listed album is blocked and nothing re-ran the filter, so
+    /// it stayed visible until an unrelated render. This counter is the
+    /// narrow exception: bumped only when learned data makes an album
+    /// blocked, and debounced past any push transition (see apply()).
+    @Published private(set) var filterVersion = 0
+    private var filterBumpTask: Task<Void, Never>?
 
     private let listKey = "jm.blockedTags.v1"
     private let cacheKey = "jm.tagCache.v1"
@@ -979,13 +988,44 @@ final class BlockTagStore: ObservableObject {
     /// anything actually changed (one publish per batch, not per album).
     private func apply(entries: [(String, [String], [String])]) -> Bool {
         var changed = false
+        var becameBlocked = false
         for (id, tags, authors) in entries {
-            if tagCache[id] != tags { tagCache[id] = tags; changed = true }
-            if authorCache[id] != authors { authorCache[id] = authors; changed = true }
+            let entryChanged = tagCache[id] != tags || authorCache[id] != authors
+            if tagCache[id] != tags { tagCache[id] = tags }
+            if authorCache[id] != authors { authorCache[id] = authors }
+            guard entryChanged else { continue }
+            changed = true
+            // Relevance gate: only albums the new data actually blocks can
+            // make an on-screen list stale. Mirrors isBlocked()'s cache
+            // branches (exact tag match, case-insensitive author match).
+            if !becameBlocked
+                && (tags.contains(where: { blockedTags.contains($0) })
+                    || authors.contains(where: { author in
+                        blockedAuthors.contains(where: {
+                            $0.localizedCaseInsensitiveCompare(author) == .orderedSame
+                        })
+                    })) {
+                becameBlocked = true
+            }
         }
         // The caches are not @Published (see their declaration), so merging
-        // here triggers no view updates at all.
+        // here triggers no view updates at all — except this one nudge when
+        // a listed album turned out to be blocked.
+        if becameBlocked { scheduleFilterBump() }
         return changed
+    }
+
+    /// One debounced filter refresh, delayed past any push transition:
+    /// browse views observe blockStore, so bumping filterVersion re-runs
+    /// their visible() filtering in place. Ordinary learns (albums that
+    /// are not blocked) never schedule this — see the gate in apply().
+    private func scheduleFilterBump() {
+        filterBumpTask?.cancel()
+        filterBumpTask = Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if Task.isCancelled { return }
+            filterVersion += 1
+        }
     }
 
     /// Persist the caches off the main actor, debounced: bursts of learned
