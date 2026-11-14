@@ -418,52 +418,6 @@ struct BookshelfView: View {
     }
 
     @ViewBuilder
-    private func destination(for item: ShelfItem) -> some View {
-        switch item {
-        case .download(let r):
-            LocalPdfView(url: r.fileURL, title: r.title)
-        case .local(let b):
-            localDestination(b)
-        }
-    }
-
-    @ViewBuilder
-    private func localDestination(_ book: LocalBook) -> some View {
-        switch book.kind {
-        case .comic: LocalComicReaderView(book: book)
-        case .pdf: LocalPdfView(url: shelf.fileURL(book, book.sourceName), title: book.title)
-        case .novel: NovelReaderView(book: book)
-        }
-    }
-
-    @ViewBuilder
-    private func cell(_ item: ShelfItem) -> some View {
-        switch item {
-        case .download(let r): DownloadCell(record: r)
-        case .local(let b): LocalBookCell(book: b)
-        }
-    }
-
-    private func progressText(_ e: LibraryStore.ProgressEntry) -> String {
-        let ch = e.chapterName
-        if ch.isEmpty || ch == (e.albumName ?? "") { return "看到第 \(e.page + 1) 页" }
-        return "\(ch) · 第 \(e.page + 1) 页"
-    }
-
-    private func recentReadCell(_ read: (albumId: String, entry: LibraryStore.ProgressEntry)) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            RemoteImage(path: ImagePipe.coverPath(albumId: read.albumId))
-                .aspectRatio(3 / 4, contentMode: .fill)
-                .frame(width: 84, height: 112)
-                .clipped()
-                .cornerRadius(8)
-            Text(read.entry.albumName ?? "").font(.caption2).lineLimit(2).frame(width: 84, alignment: .leading)
-            Text(progressText(read.entry))
-                .font(.system(size: 9)).foregroundColor(.secondary).lineLimit(1).frame(width: 84, alignment: .leading)
-        }
-    }
-
-    @ViewBuilder
     private func cover(_ item: ShelfItem) -> some View {
         switch item {
         case .download(let r):
