@@ -108,13 +108,13 @@ enum Inflate {
                             lengths.append(sym)
                         } else if sym == 16 {
                             guard let prev = lengths.last else { throw InflateError.badLength }
-                            let rep = 3 + try br.read(2)
+                            let rep = 3 + (try br.read(2))
                             lengths.append(contentsOf: [Int](repeating: prev, count: rep))
                         } else if sym == 17 {
-                            let rep = 3 + try br.read(3)
+                            let rep = 3 + (try br.read(3))
                             lengths.append(contentsOf: [Int](repeating: 0, count: rep))
                         } else {
-                            let rep = 11 + try br.read(7)
+                            let rep = 11 + (try br.read(7))
                             lengths.append(contentsOf: [Int](repeating: 0, count: rep))
                         }
                     }
@@ -131,10 +131,10 @@ enum Inflate {
                     } else {
                         let li = sym - 257
                         guard li < lenBase.count else { throw InflateError.badLength }
-                        let length = lenBase[li] + try br.read(lenExt[li])
+                        let length = lenBase[li] + (try br.read(lenExt[li]))
                         let dsym = try dist.decode(br)
                         guard dsym < distBase.count else { throw InflateError.badLength }
-                        let d = distBase[dsym] + try br.read(distExt[dsym])
+                        let d = distBase[dsym] + (try br.read(distExt[dsym]))
                         guard d <= out.count, d > 0 else { throw InflateError.badLength }
                         var start = out.count - d
                         for _ in 0..<length { out.append(out[start]); start += 1 }
@@ -495,7 +495,7 @@ final class LocalBookStore: ObservableObject {
 
     static func decodeText(_ data: Data) -> String {
         if let s = String(data: data, encoding: .utf8) { return s }
-        let gb = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(kCFStringEncodingGB_18030_2000))
+        let gb = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncodings.GB_18030_2000.rawValue))
         if let s = String(data: data, encoding: gb) { return s }
         return String(decoding: data, as: UTF8.self)
     }
