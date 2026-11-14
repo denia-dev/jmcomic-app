@@ -76,6 +76,8 @@ private enum ShelfItem: Identifiable {
 struct BookshelfView: View {
     @EnvironmentObject var shelf: LocalBookStore
     @EnvironmentObject var downloads: DownloadManager
+    @EnvironmentObject var library: LibraryStore
+    @State private var readerRoute: ReaderRoute?
     @State private var segment = 0        // 0 全部 1 下载 2 导入
     @State private var typeFilter = 0     // 0 全部 1 漫画 2 小说 (全部/导入 segments)
     @State private var dlCategory = "__all__"   // downloads segment: JM category filter
@@ -132,11 +134,15 @@ struct BookshelfView: View {
         }
     }
 
-    private var recentItems: [ShelfItem] {
-        let pool = (visibleDownloads.map(ShelfItem.download) + visibleLocals.map(ShelfItem.local)).sorted {
-            activity($0) > activity($1)
-        }
-        return Array(pool.prefix(8))
+    /// 最近阅读 = the online reading history (LibraryStore.progress),
+    /// most recent first. This is what the owner asked for on the shelf:
+    /// it must show up from his actual reading, not only after imports.
+    private var recentReads: [(albumId: String, entry: LibraryStore.ProgressEntry)] {
+        _ = library.progressTick   // refresh after a reader closes
+        return library.progress
+            .map { (albumId: $0.key, entry: $0.value) }
+            .sorted { $0.entry.updatedAt > $1.entry.updatedAt }
+            .prefix(10).map { $0 }
     }
 
     var body: some View {
@@ -146,6 +152,9 @@ struct BookshelfView: View {
                 content
             }
             .navigationTitle("书架")
+            .fullScreenCover(item: $readerRoute) { route in
+                ReaderView(route: route)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showImporter = true } label: { Label("导入", systemImage: "plus") }
@@ -243,7 +252,8 @@ struct BookshelfView: View {
     @ViewBuilder
     private var content: some View {
         let items = allItems
-        if items.isEmpty {
+        let reads = (segment == 0 && typeFilter == 0) ? recentReads : []
+        if items.isEmpty && reads.isEmpty {
             VStack(spacing: 14) {
                 Image(systemName: "books.vertical")
                     .font(.system(size: 44)).foregroundColor(.secondary)
@@ -256,14 +266,21 @@ struct BookshelfView: View {
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if segment == 0 && typeFilter == 0 && recentItems.count >= 2 {
+                    if !reads.isEmpty {
                         Text("最近阅读").font(.headline)
                             .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 8)
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(alignment: .top, spacing: 12) {
-                                ForEach(recentItems) { item in
-                                    NavigationLink { destination(for: item) } label: {
-                                        recentCell(item)
+                                ForEach(reads, id: \.albumId) { read in
+                                    Button {
+                                        readerRoute = ReaderRoute(
+                                            albumId: read.albumId,
+                                            albumName: read.entry.albumName ?? "",
+                                            chapters: [],
+                                            startChapterId: read.entry.chapterId,
+                                            startPage: read.entry.page)
+                                    } label: {
+                                        recentReadCell(read)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -271,6 +288,12 @@ struct BookshelfView: View {
                             .padding(.horizontal, 16)
                         }
                         .padding(.bottom, 6)
+                    }
+                    if items.isEmpty {
+                        Text(emptyHint)
+                            .font(.subheadline).foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, 26)
                     }
                     LazyVGrid(columns: cols, spacing: 18) {
                         ForEach(items) { item in
@@ -342,12 +365,14 @@ struct BookshelfView: View {
         }
     }
 
-    private func recentCell(_ item: ShelfItem) -> some View {
+    private func recentReadCell(_ read: (albumId: String, entry: LibraryStore.ProgressEntry)) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            cover(item)
+            RemoteImage(path: ImagePipe.coverPath(albumId: read.albumId))
                 .frame(width: 76, height: 101)
                 .clipShape(RoundedRectangle(cornerRadius: 7))
-            Text(item.title).font(.caption2).lineLimit(2).frame(width: 76, alignment: .leading)
+            Text(read.entry.albumName ?? "").font(.caption2).lineLimit(2).frame(width: 76, alignment: .leading)
+            Text(read.entry.chapterName.isEmpty ? "看到第 \(read.entry.page + 1) 页" : "\(read.entry.chapterName) · 第 \(read.entry.page + 1) 页")
+                .font(.system(size: 9)).foregroundColor(.secondary).lineLimit(1).frame(width: 76, alignment: .leading)
         }
     }
 
