@@ -128,7 +128,7 @@ struct ForYouView: View {
                     Text("暂时没挑到合适的，点「换一批」再试")
                         .foregroundColor(.secondary).padding(30)
                 } else {
-                    ComicGrid(items: items, columnsOverride: 2, applyBlockFilter: true)
+                    ComicGrid(items: items, columnsOverride: 4, applyBlockFilter: true)
                 }
             }
             .padding(.bottom, 12)
