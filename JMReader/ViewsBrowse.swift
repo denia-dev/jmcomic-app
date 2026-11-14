@@ -387,7 +387,26 @@ struct RecommendView: View {
         defer { loading = false }
         let all = (try? await JMClient.shared.promote()) ?? sections
         sections = all.filter { !$0.title.contains("連載更新") && !$0.title.contains("连载更新") }
-        randoms = (try? await JMClient.shared.randomRecommend()) ?? randoms
+        randoms = await loadRandoms()
+    }
+
+    /// The server's `random_recommend` returns the same ~30 newest albums
+    /// shuffled on every call (verified live 2026-11-14: three calls, one
+    /// identical id set), so refreshing never surfaced anything new. Build
+    /// our own pool instead: a random window of the latest feed (80 per
+    /// page), deduped and shuffled; each load picks a fresh window, so
+    /// pull-to-refresh actually re-rolls. Falls back to the server list
+    /// when the feed cannot be read at all.
+    private func loadRandoms() async -> [Comic] {
+        let start = Int.random(in: 1...24)
+        var pool: [Comic] = []
+        var seen = Set<String>()
+        for page in start..<(start + 3) {
+            guard let items = try? await JMClient.shared.latest(page: page) else { break }
+            for c in items where seen.insert(c.id).inserted { pool.append(c) }
+        }
+        if pool.isEmpty { return (try? await JMClient.shared.randomRecommend()) ?? randoms }
+        return Array(pool.shuffled().prefix(36))
     }
 }
 
@@ -574,6 +593,7 @@ struct SearchView: View {
                         .padding(.bottom, 20)
                     }
                     .tabMinimizeOnScroll()
+                    .refreshable { await loadDoujin(reroll: true) }
                     .task { await loadDoujin() }
                 } else {
                     ScrollView {
@@ -607,16 +627,23 @@ struct SearchView: View {
         }
     }
 
-    private func loadDoujin() async {
+    private func loadDoujin(reroll: Bool = false) async {
         // The recommendations used to vanish intermittently: a single failed
         // (or .task-cancelled) fetch left doujinItems empty with no retry.
         // Retry with backoff and only assign on success.
-        if !doujinItems.isEmpty || doujinLoading { return }
+        // They also never changed: the fetch was pinned to page 1 and ran
+        // once per view lifetime. Each load now draws a random page of the
+        // doujin category (80 per page, thousands of pages), and the search
+        // page's pull-to-refresh re-rolls it. A failed re-roll keeps the
+        // previous list.
+        if doujinLoading { return }
+        if !reroll && !doujinItems.isEmpty { return }
         doujinLoading = true
         defer { doujinLoading = false }
+        let page = Int.random(in: 1...60)
         for attempt in 0..<3 {
             if Task.isCancelled { return }
-            if let res = try? await JMClient.shared.categoryFilter(slug: "doujin", page: 1),
+            if let res = try? await JMClient.shared.categoryFilter(slug: "doujin", page: page),
                !res.items.isEmpty {
                 doujinItems = res.items
                 return
