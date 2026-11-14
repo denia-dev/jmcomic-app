@@ -156,7 +156,7 @@ fun HomeScreen(router: Router, goProfile: () -> Unit, goSearch: () -> Unit = {})
         when {
             ch.slug == null -> RecommendContent(router)
             ch.slug == "latest" -> PagedGrid(loader = { p -> JmApi.latest(p) }, router = router, key = "latest")
-            ch.slug == "random" -> PagedGrid(loader = { p -> if (p == 1) JmApi.randomRecommend() else emptyList() }, router = router, key = "random")
+            ch.slug == "random" -> PagedGrid(loader = { p -> if (p == 1) JmApi.randomPool() else emptyList() }, router = router, key = "random")
             else -> PagedGrid(loader = { p -> JmApi.categoryFilter(ch.slug, p) }, router = router, key = "cat-${ch.slug}")
         }
     }
@@ -192,7 +192,7 @@ fun RecommendContent(router: Router) {
     LaunchedEffect(reload) {
         try {
             sections = JmApi.promote().filter { it.first != "連載更新" }
-            randoms = JmApi.randomRecommend()
+            randoms = JmApi.randomPool()
         } catch (e: Exception) { error = e.message }
     }
     LaunchedEffect(sections, randoms) {
@@ -340,7 +340,8 @@ fun SearchScreen(router: Router, history: HistoryStore) {
             }
             Text("同人推荐", fontWeight = FontWeight.Bold, fontSize = 14.sp,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
-            PagedGrid(loader = { p -> if (p == 1) JmApi.categoryFilter("doujin", 1) else emptyList() }, router = router, key = "doujin-rec")
+            // A random page per visit (was pinned to page 1 forever, like iOS).
+            PagedGrid(loader = { p -> if (p == 1) JmApi.categoryFilter("doujin", (1..60).random()) else emptyList() }, router = router, key = "doujin-rec")
         } else {
             PagedGrid(loader = { p -> JmApi.search(s, p, order, typeIdx).second }, router = router, key = "search-$s-$order-$typeIdx")
         }

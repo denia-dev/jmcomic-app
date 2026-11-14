@@ -213,6 +213,23 @@ object JmApi {
 
     suspend fun randomRecommend(): List<Album> = parseAlbums(callArray("random_recommend"))
 
+    /** The server's random_recommend returns the same ~30 newest albums
+     *  shuffled on every call (verified live 2026-11-14: three calls, one
+     *  identical id set), so build our own pool like iOS: a random window
+     *  of the latest feed (80 per page), deduped and shuffled. Falls back
+     *  to the server list when the feed cannot be read at all. */
+    suspend fun randomPool(): List<Album> {
+        val start = (1..24).random()
+        val seen = HashSet<String>()
+        val pool = mutableListOf<Album>()
+        for (p in start until start + 3) {
+            val items = try { latest(p) } catch (e: Exception) { break }
+            for (a in items) if (seen.add(a.id)) pool.add(a)
+        }
+        if (pool.isEmpty()) return randomRecommend()
+        return pool.shuffled().take(36)
+    }
+
     suspend fun album(id: String): JSONObject = call("album", mapOf("id" to id))
     suspend fun chapter(id: String): JSONObject = call("chapter", mapOf("id" to id))
 

@@ -95,6 +95,7 @@ fun JmApp(externalPdf: android.net.Uri? = null, onExternalPdfDone: () -> Unit = 
         JmApi.imgHost = Lines.currentImgHost()
         launch { Lines.refresh(false) }
     }
+    LaunchedEffect(Unit) { UpdateCheck.checkOnLaunch(context) }
     val router = remember { Router() }
     val pagerState = rememberPagerState(pageCount = { 4 })
     val scope = rememberCoroutineScope()
@@ -107,6 +108,7 @@ fun JmApp(externalPdf: android.net.Uri? = null, onExternalPdfDone: () -> Unit = 
 
     var viewingExternal by remember { mutableStateOf<java.io.File?>(null) }
     JmTheme {
+        if (UpdateCheck.showPrompt) UpdatePromptDialog(context)
         if (viewingExternal != null) {
             PdfViewerScreen(viewingExternal!!) { viewingExternal = null }
             return@JmTheme
