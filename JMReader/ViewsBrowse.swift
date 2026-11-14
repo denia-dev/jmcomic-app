@@ -352,6 +352,7 @@ struct RecommendView: View {
     @State private var sections: [PromoSection] = []
     @State private var randoms: [Comic] = []
     @State private var loading = false
+    @State private var rerolling = false
 
     var body: some View {
         Group {
@@ -364,9 +365,21 @@ struct RecommendView: View {
                             ShelfRow(section: sec)
                         }
                         if !randoms.isEmpty {
-                            Text("随机推荐")
-                                .font(.headline)
-                                .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 6)
+                            HStack {
+                                Text("随机推荐").font(.headline)
+                                Spacer()
+                                Button {
+                                    Task { await rerollRandoms() }
+                                } label: {
+                                    if rerolling {
+                                        ProgressView()
+                                    } else {
+                                        Text("换一批").font(.subheadline).foregroundColor(accentPink)
+                                    }
+                                }
+                                .disabled(rerolling)
+                            }
+                            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 6)
                             ComicGrid(items: randoms, columnsOverride: 2, applyBlockFilter: true)
                         }
                         if sections.isEmpty && randoms.isEmpty && !loading {
@@ -387,7 +400,20 @@ struct RecommendView: View {
         defer { loading = false }
         let all = (try? await JMClient.shared.promote()) ?? sections
         sections = all.filter { !$0.title.contains("連載更新") && !$0.title.contains("连载更新") }
-        randoms = await loadRandoms()
+        let fresh = await loadRandoms()
+        if !fresh.isEmpty { randoms = fresh }
+    }
+
+    /// Manual re-roll for the 随机推荐 grid (the header's 换一批 button).
+    /// Exists because pull-to-refresh on this page proved unreliable at
+    /// re-rolling the randoms on device (iOS 27 beta): a plain button
+    /// action has no gesture/task-cancellation ambiguity.
+    private func rerollRandoms() async {
+        if rerolling { return }
+        rerolling = true
+        defer { rerolling = false }
+        let fresh = await loadRandoms()
+        if !fresh.isEmpty { randoms = fresh }
     }
 
     /// The server's `random_recommend` returns the same ~30 newest albums
@@ -402,11 +428,22 @@ struct RecommendView: View {
         var pool: [Comic] = []
         var seen = Set<String>()
         for page in start..<(start + 3) {
-            guard let items = try? await JMClient.shared.latest(page: page) else { break }
+            // One retry per page and never abandon the whole draw over a
+            // single failed page; an empty result means "keep the old
+            // list" to the caller — crucially there is NO silent fallback
+            // to the server's fixed random_recommend set anymore.
+            var items: [Comic] = []
+            for _ in 0..<2 where items.isEmpty {
+                if let got = try? await JMClient.shared.latest(page: page) { items = got }
+            }
             for c in items where seen.insert(c.id).inserted { pool.append(c) }
         }
-        if pool.isEmpty { return (try? await JMClient.shared.randomRecommend()) ?? randoms }
-        return Array(pool.shuffled().prefix(36))
+        guard !pool.isEmpty else { return [] }
+        // Prefer albums that are not already on screen, so a re-roll is
+        // unmistakably a new batch.
+        let current = Set(randoms.map(\.id))
+        let fresh = pool.filter { !current.contains($0.id) }
+        return Array((fresh.count >= 12 ? fresh : pool).shuffled().prefix(36))
     }
 }
 
@@ -585,8 +622,21 @@ struct SearchView: View {
                         VStack(alignment: .leading, spacing: 0) {
                             historyView
                             if !doujinItems.isEmpty {
-                                Text("同人推荐").font(.headline)
-                                    .padding(.horizontal, 16).padding(.top, 20).padding(.bottom, 6)
+                                HStack {
+                                    Text("同人推荐").font(.headline)
+                                    Spacer()
+                                    Button {
+                                        Task { await loadDoujin(reroll: true) }
+                                    } label: {
+                                        if doujinLoading {
+                                            ProgressView()
+                                        } else {
+                                            Text("换一批").font(.subheadline).foregroundColor(accentPink)
+                                        }
+                                    }
+                                    .disabled(doujinLoading)
+                                }
+                                .padding(.horizontal, 16).padding(.top, 20).padding(.bottom, 6)
                                 ComicGrid(items: doujinItems, applyBlockFilter: true)
                             }
                         }
