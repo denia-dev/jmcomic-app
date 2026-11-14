@@ -45,20 +45,3 @@ jobs:
           name: JMReader-unsigned-ipa
           path: JMReader-unsigned.ipa
           retention-days: 30
-
-      - name: Publish release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VER=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Payload/JMReader.app/Info.plist)
-          TAG="v$VER"
-          echo "Publishing release $TAG"
-          awk -v tag="## $TAG" '/^## / { insec = ($0 == tag) } insec { print }' CHANGELOG.md > /tmp/notes.md
-          if [ ! -s /tmp/notes.md ]; then printf 'JM Reader %s\n' "$TAG" > /tmp/notes.md; fi
-          printf '\n未签名 IPA — 用轻松签签名后安装。\n' >> /tmp/notes.md
-          gh release create "$TAG" JMReader-unsigned.ipa \
-            --title "JM Reader $TAG" \
-            --notes-file /tmp/notes.md \
-            --draft \
-          || { gh release upload "$TAG" JMReader-unsigned.ipa --clobber && \
-               gh release edit "$TAG" --notes-file /tmp/notes.md --draft; }
