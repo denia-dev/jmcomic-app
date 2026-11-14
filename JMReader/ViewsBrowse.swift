@@ -244,7 +244,7 @@ struct HomeView: View {
             .buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 1) {
                 Text(greeting).font(.headline)
-                Text(account.username.isEmpty ? "点头像登录账号" : "@\(account.username)")
+                Text(account.username.flatMap { $0.isEmpty ? nil : "@\($0)" } ?? "点头像登录账号")
                     .font(.caption).foregroundColor(.secondary)
             }
             Spacer()
