@@ -290,10 +290,26 @@ struct BookshelfView: View {
                         .padding(.bottom, 6)
                     }
                     if items.isEmpty {
-                        Text(emptyHint)
-                            .font(.subheadline).foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 26)
+                        VStack(spacing: 10) {
+                            Image(systemName: "tray.and.arrow.down")
+                                .font(.system(size: 26)).foregroundColor(accentPink)
+                            Text("书架上还没有本地的书").font(.subheadline).fontWeight(.semibold)
+                            Text("下载的漫画会出现在这里\n也可以导入自己的漫画和小说文件")
+                                .font(.caption).foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button { showImporter = true } label: {
+                                Text("导入文件")
+                                    .font(.subheadline).fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 18).padding(.vertical, 8)
+                                    .background(Capsule().fill(accentPink))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 22).padding(.horizontal, 18)
+                        .glassSurface(RoundedRectangle(cornerRadius: 16))
+                        .padding(.horizontal, 16).padding(.top, 24)
                     }
                     LazyVGrid(columns: cols, spacing: 18) {
                         ForEach(items) { item in
@@ -365,14 +381,22 @@ struct BookshelfView: View {
         }
     }
 
+    private func progressText(_ e: LibraryStore.ProgressEntry) -> String {
+        let ch = e.chapterName
+        if ch.isEmpty || ch == (e.albumName ?? "") { return "看到第 \(e.page + 1) 页" }
+        return "\(ch) · 第 \(e.page + 1) 页"
+    }
+
     private func recentReadCell(_ read: (albumId: String, entry: LibraryStore.ProgressEntry)) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             RemoteImage(path: ImagePipe.coverPath(albumId: read.albumId))
-                .frame(width: 76, height: 101)
-                .clipShape(RoundedRectangle(cornerRadius: 7))
-            Text(read.entry.albumName ?? "").font(.caption2).lineLimit(2).frame(width: 76, alignment: .leading)
-            Text(read.entry.chapterName.isEmpty ? "看到第 \(read.entry.page + 1) 页" : "\(read.entry.chapterName) · 第 \(read.entry.page + 1) 页")
-                .font(.system(size: 9)).foregroundColor(.secondary).lineLimit(1).frame(width: 76, alignment: .leading)
+                .aspectRatio(3 / 4, contentMode: .fill)
+                .frame(width: 84, height: 112)
+                .clipped()
+                .cornerRadius(8)
+            Text(read.entry.albumName ?? "").font(.caption2).lineLimit(2).frame(width: 84, alignment: .leading)
+            Text(progressText(read.entry))
+                .font(.system(size: 9)).foregroundColor(.secondary).lineLimit(1).frame(width: 84, alignment: .leading)
         }
     }
 
