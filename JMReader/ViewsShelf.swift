@@ -201,14 +201,27 @@ struct BookshelfView: View {
             .fileImporter(isPresented: $showImporter,
                           allowedContentTypes: [UTType.data],
                           allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result, !urls.isEmpty {
+                // The result note is set after a short delay on purpose:
+                // presenting the alert in the same moment the picker sheet
+                // dismisses can get the presentation dropped on iOS 27,
+                // which read as "picked a file, nothing happened at all".
+                switch result {
+                case .success(let urls) where !urls.isEmpty:
                     Task {
                         let r = await shelf.importFiles(urls)
                         var parts: [String] = []
                         if !r.added.isEmpty { parts.append("已导入 \(r.added.count) 本") }
-                        if !r.failed.isEmpty { parts.append("失败：\(r.failed.joined(separator: "、"))") }
-                        note = parts.joined(separator: "\n")
+                        if !r.failed.isEmpty { parts.append("失败：\n\(r.failed.joined(separator: "\n"))") }
+                        try? await Task.sleep(nanoseconds: 350_000_000)
+                        note = parts.isEmpty ? "没有导入任何文件" : parts.joined(separator: "\n")
                     }
+                case .failure(let error):
+                    Task {
+                        try? await Task.sleep(nanoseconds: 350_000_000)
+                        note = "选择器没能读取文件：\(error.localizedDescription)"
+                    }
+                default:
+                    break
                 }
             }
             .alert("导入结果", isPresented: Binding(get: { note != nil }, set: { if !$0 { note = nil } })) {

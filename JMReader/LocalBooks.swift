@@ -315,25 +315,49 @@ final class LocalBookStore: ObservableObject {
 
     /// Imports picked files. Returns (imported titles, failed file names).
     @MainActor
+    /// Import picked files. The original build staged directly from the
+    /// picker's security-scoped URL inside a detached task; on the owner's
+    /// device the whole import silently did nothing (16:24 report: picked
+    /// a PDF and an EPUB, confirmed, zero reaction). This version removes
+    /// every fragile link in that chain: each picked file is first COPIED
+    /// into the app's own temp area while the security scope is fresh,
+    /// staging then runs from that plain file, and every failure surfaces
+    /// its actual reason so a bad file can be diagnosed from the result
+    /// text alone.
     func importFiles(_ urls: [URL]) async -> (added: [String], failed: [String]) {
         guard !urls.isEmpty else { return ([], []) }
         isImporting = true
         defer { isImporting = false }
         var added: [String] = []
         var failed: [String] = []
+        let tmpRoot = root.appendingPathComponent("tmp-imports", isDirectory: true)
+        try? FileManager.default.createDirectory(at: tmpRoot, withIntermediateDirectories: true)
         for url in urls {
             let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            // Unique subfolder, original filename: stageImport derives the
+            // book title and stored source name from the filename.
+            let copyDir = tmpRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            let copyURL = copyDir.appendingPathComponent(url.lastPathComponent)
+            do {
+                try FileManager.default.createDirectory(at: copyDir, withIntermediateDirectories: true)
+                try FileManager.default.copyItem(at: url, to: copyURL)
+            } catch {
+                if scoped { url.stopAccessingSecurityScopedResource() }
+                failed.append("\(url.lastPathComponent)：读取失败（\(error.localizedDescription)）")
+                continue
+            }
+            if scoped { url.stopAccessingSecurityScopedResource() }
             do {
                 let book = try await Task.detached(priority: .userInitiated) {
-                    try Self.stageImport(from: url, root: self.root)
+                    try Self.stageImport(from: copyURL, root: self.root)
                 }.value
                 books.insert(book, at: 0)
                 persistIndex()
                 added.append(book.title)
             } catch {
-                failed.append(url.lastPathComponent)
+                failed.append("\(url.lastPathComponent)：\(error.localizedDescription)")
             }
+            try? FileManager.default.removeItem(at: copyDir)
         }
         return (added, failed)
     }
