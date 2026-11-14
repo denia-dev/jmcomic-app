@@ -86,6 +86,7 @@ struct ChapterRef: Identifiable, Hashable {
 struct AlbumDetail {
     var id: String
     var name: String
+    var categoryTitle: String
     var authors: [String]
     var tags: [String]
     var works: [String]
@@ -100,6 +101,8 @@ struct AlbumDetail {
     init(dict d: [String: Any]) {
         id = anyString(d["id"])
         name = anyString(d["name"])
+        if let c = d["category"] as? [String: Any] { categoryTitle = anyString(c["title"]) }
+        else { categoryTitle = "" }
         authors = anyStringList(d["author"])
         tags = anyStringList(d["tags"])
         works = anyStringList(d["works"])

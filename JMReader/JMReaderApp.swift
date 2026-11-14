@@ -9,6 +9,7 @@ struct JMReaderApp: App {
     @StateObject private var downloads = DownloadManager()
     @StateObject private var blockStore = BlockTagStore()
     @StateObject private var readingStats = ReadingStatsStore()
+    @StateObject private var localBooks = LocalBookStore()
     @StateObject private var updater = UpdateChecker()
 
     var body: some Scene {
@@ -17,8 +18,8 @@ struct JMReaderApp: App {
                 HomeView()
                     .tabItem { Label("首页", systemImage: "house.fill") }
                     .tag(0)
-                CategoriesView()
-                    .tabItem { Label("分类", systemImage: "square.grid.2x2.fill") }
+                BookshelfView()
+                    .tabItem { Label("书架", systemImage: "books.vertical.fill") }
                     .tag(2)
                 FavoritesView()
                     .tabItem { Label("个人", systemImage: "person.fill") }
@@ -53,6 +54,7 @@ struct JMReaderApp: App {
             .environmentObject(downloads)
             .environmentObject(blockStore)
             .environmentObject(readingStats)
+            .environmentObject(localBooks)
             .environmentObject(updater)
         }
     }

@@ -1,6 +1,7 @@
 import SwiftUI
 
 let accentPink = Color(red: 1.0, green: 0.18, blue: 0.533)
+let accentBlue = Color(red: 0.0, green: 0.569, blue: 1.0)
 
 // MARK: - shared bits
 
@@ -181,6 +182,7 @@ enum HomeChannel: Identifiable, Equatable {
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var downloads: DownloadManager
+    @EnvironmentObject var account: AccountStore
     @State private var cats: [JMCategory] = []
     @State private var channel: HomeChannel = .recommend
 
@@ -217,6 +219,17 @@ struct HomeView: View {
         }
     }
 
+    private var greeting: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 0..<5: return "夜深了"
+        case 5..<9: return "早上好"
+        case 9..<12: return "上午好"
+        case 12..<14: return "中午好"
+        case 14..<18: return "下午好"
+        default: return "晚上好"
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 10) {
             Button {
@@ -229,18 +242,12 @@ struct HomeView: View {
                     .overlay(Circle().strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
             }
             .buttonStyle(.plain)
-            Button {
-                appState.goSearch()
-            } label: {
-                HStack(spacing: 7) {
-                    Image(systemName: "magnifyingglass")
-                    Text("搜索").foregroundColor(.secondary)
-                    Spacer()
-                }
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .glassSurface(Capsule(), interactive: true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(greeting).font(.headline)
+                Text(account.username.isEmpty ? "点头像登录账号" : "@\(account.username)")
+                    .font(.caption).foregroundColor(.secondary)
             }
-            .buttonStyle(.plain)
+            Spacer()
             NavigationLink {
                 DownloadsView(embedded: true)
             } label: {
@@ -353,8 +360,26 @@ struct RecommendView: View {
     @State private var randoms: [Comic] = []
     @State private var loading = false
     @State private var rerolling = false
+    @AppStorage("jm.recommendMode") private var mode = "standard"
 
     var body: some View {
+        VStack(spacing: 0) {
+            Picker("推荐模式", selection: $mode) {
+                Text("推荐").tag("standard")
+                Text("猜你喜欢").tag("foryou")
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 2)
+            if mode == "foryou" {
+                ForYouView()
+            } else {
+                standardBody
+            }
+        }
+        .task { if sections.isEmpty { await load() } }
+    }
+
+    private var standardBody: some View {
         Group {
             if sections.isEmpty && loading {
                 ProgressView("加载中…").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -392,7 +417,6 @@ struct RecommendView: View {
                 .refreshable { await load() }
             }
         }
-        .task { if sections.isEmpty { await load() } }
     }
 
     private func load() async {
@@ -1163,7 +1187,7 @@ struct FavoritesView: View {
 
     private func downloadSelected() {
         for comic in shownCloud where selectedIds.contains(comic.id) {
-            downloads.enqueue(albumId: comic.id, title: comic.name)
+            downloads.enqueue(albumId: comic.id, title: comic.name, category: comic.categoryTitle)
         }
         selecting = false
         selectedIds.removeAll()
@@ -1489,7 +1513,7 @@ struct DetailView: View {
                 .padding(.horizontal, 16).padding(.top, 14)
         } else {
             Button {
-                downloads.enqueue(albumId: d.id, title: d.name)
+                downloads.enqueue(albumId: d.id, title: d.name, category: d.categoryTitle)
             } label: {
                 Label("下载全本", systemImage: "arrow.down.circle")
                     .font(.headline).foregroundColor(accentPink)

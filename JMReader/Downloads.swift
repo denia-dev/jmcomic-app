@@ -40,6 +40,10 @@ struct DownloadedRecord: Codable, Identifiable {
 final class DownloadedStore: ObservableObject {
     @Published private(set) var records: [DownloadedRecord] = []
     private let storeURL: URL
+    /// JM category per downloaded album, kept OUT of downloads.json so old
+    /// libraries decode untouched; filled at download time ("" = 未分类).
+    private(set) var categoryMap: [String: String] = [:]
+    private let categoryKey = "jm.dlCategories.v1"
     static var documents: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] }
 
     init() {
@@ -48,6 +52,21 @@ final class DownloadedStore: ObservableObject {
            let list = try? JSONDecoder().decode([DownloadedRecord].self, from: data) {
             records = list
         }
+        if let data = UserDefaults.standard.data(forKey: categoryKey),
+           let map = try? JSONDecoder().decode([String: String].self, from: data) {
+            categoryMap = map
+        }
+    }
+
+    func category(for albumId: String) -> String { categoryMap[albumId] ?? "" }
+
+    func setCategory(_ category: String, for albumId: String) {
+        guard !category.isEmpty, categoryMap[albumId] != category else { return }
+        categoryMap[albumId] = category
+        if let d = try? JSONEncoder().encode(categoryMap) {
+            UserDefaults.standard.set(d, forKey: categoryKey)
+        }
+        objectWillChange.send()
     }
 
     func record(for albumId: String) -> DownloadedRecord? { records.first { $0.albumId == albumId } }
@@ -61,6 +80,12 @@ final class DownloadedStore: ObservableObject {
     func delete(_ r: DownloadedRecord) {
         try? FileManager.default.removeItem(at: r.fileURL)
         records.removeAll { $0.albumId == r.albumId }
+        if categoryMap[r.albumId] != nil {
+            categoryMap[r.albumId] = nil
+            if let d = try? JSONEncoder().encode(categoryMap) {
+                UserDefaults.standard.set(d, forKey: categoryKey)
+            }
+        }
         persist()
     }
 
@@ -92,6 +117,7 @@ final class DownloadJob: ObservableObject, Identifiable {
     let id = UUID()
     let albumId: String
     let title: String
+    var category: String = ""
     enum State { case queued, working, done, failed, cancelled }
     @Published var state: State = .queued
     @Published var totalPages = 0
@@ -127,10 +153,11 @@ final class DownloadManager: ObservableObject {
         jobs.first { $0.albumId == albumId && ($0.state == .queued || $0.state == .working) }
     }
 
-    func enqueue(albumId: String, title: String) {
+    func enqueue(albumId: String, title: String, category: String = "") {
         if job(for: albumId) != nil { return }
         jobs.removeAll { $0.albumId == albumId && $0.state != .done }
         let j = DownloadJob(albumId: albumId, title: title)
+        j.category = category
         jobs.append(j)
         pump()
     }
@@ -174,6 +201,7 @@ final class DownloadManager: ObservableObject {
         job.phase = "获取章节列表…"
         do {
             let album = try await JMClient.shared.album(id: job.albumId)
+            if job.category.isEmpty { job.category = album.categoryTitle }
             let chapters: [ChapterRef] = album.chapters.isEmpty
                 ? [ChapterRef(id: album.id, name: album.name, sort: 1)]
                 : album.chapters
@@ -258,6 +286,7 @@ final class DownloadManager: ObservableObject {
                                         chapters: plan.count, pages: entries.count,
                                         bytes: totalBytes, fileName: fileName,
                                         date: Date().timeIntervalSince1970))
+            store.setCategory(job.category, for: job.albumId)
             job.state = .done
             job.phase = "完成"
         } catch is CancellationError {
