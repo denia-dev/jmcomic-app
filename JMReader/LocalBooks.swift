@@ -373,6 +373,8 @@ final class LocalBookStore: ObservableObject {
             switch ext {
             case "zip", "cbz":
                 return try stageComicArchive(src: url, dir: dir, id: id, title: baseTitle)
+            case "rar":
+                return try stageRar(src: url, dir: dir, id: id, title: baseTitle)
             case "pdf":
                 return try stagePdf(src: url, dir: dir, id: id, title: baseTitle)
             case "epub":
@@ -418,6 +420,55 @@ final class LocalBookStore: ObservableObject {
                          coverRel: names.first.map { "pages/\($0)" },
                          pageFiles: names, addedAt: Date().timeIntervalSince1970,
                          sizeBytes: size)
+    }
+
+    /// RAR via the vendored UnRAR library (UnrarBridge): extract to a
+    /// staging subfolder, then route the contents through the same staging
+    /// paths as everything else — images become a comic, a lone TXT/EPUB
+    /// becomes a novel, a lone PDF stays a PDF.
+    private static func stageRar(src: URL, dir: URL, id: String, title: String) throws -> LocalBook {
+        let extractDir = dir.appendingPathComponent("rar-extract", isDirectory: true)
+        try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: extractDir) }
+        let rels = try UnrarBridge.extractArchive(atPath: src.path, toDirectory: extractDir.path)
+            .filter { !$0.hasSuffix("/") }
+        let imageExts: Set<String> = ["jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp", "avif"]
+        let images = rels.filter { rel in
+            let comps = rel.split(separator: "/")
+            if comps.contains("__MACOSX") { return false }
+            let last = comps.last.map(String.init) ?? rel
+            if last.hasPrefix(".") { return false }
+            return imageExts.contains((last as NSString).pathExtension.lowercased())
+        }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        if !images.isEmpty {
+            let pagesDir = dir.appendingPathComponent("pages", isDirectory: true)
+            try FileManager.default.createDirectory(at: pagesDir, withIntermediateDirectories: true)
+            var names: [String] = []
+            for (i, rel) in images.enumerated() {
+                let ext = (rel as NSString).pathExtension.lowercased()
+                let name = String(format: "%05d.%@", i, ext.isEmpty ? "img" : ext)
+                try FileManager.default.copyItem(at: extractDir.appendingPathComponent(rel),
+                                                 to: pagesDir.appendingPathComponent(name))
+                names.append(name)
+            }
+            var size = 0
+            for n in names { size += (try? Data(contentsOf: pagesDir.appendingPathComponent(n)).count) ?? 0 }
+            return LocalBook(id: id, title: title, kind: .comic, dirName: id,
+                             sourceName: src.lastPathComponent,
+                             coverRel: names.first.map { "pages/\($0)" },
+                             pageFiles: names, addedAt: Date().timeIntervalSince1970,
+                             sizeBytes: size)
+        }
+        if let txt = rels.first(where: { $0.lowercased().hasSuffix(".txt") }) {
+            return try stageTxt(src: extractDir.appendingPathComponent(txt), dir: dir, id: id, title: title)
+        }
+        if let epub = rels.first(where: { $0.lowercased().hasSuffix(".epub") }) {
+            return try stageEpub(src: extractDir.appendingPathComponent(epub), dir: dir, id: id, title: title)
+        }
+        if let pdf = rels.first(where: { $0.lowercased().hasSuffix(".pdf") }) {
+            return try stagePdf(src: extractDir.appendingPathComponent(pdf), dir: dir, id: id, title: title)
+        }
+        throw ZipError.entryNotFound
     }
 
     private static func stagePdf(src: URL, dir: URL, id: String, title: String) throws -> LocalBook {
