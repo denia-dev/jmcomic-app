@@ -495,7 +495,8 @@ final class LocalBookStore: ObservableObject {
 
     static func decodeText(_ data: Data) -> String {
         if let s = String(data: data, encoding: .utf8) { return s }
-        let gb = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncodings.GB_18030_2000.rawValue))
+        let gb = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(
+            CFStringEncoding(UInt32(CFStringEncodings.GB_18030_2000.rawValue))))
         if let s = String(data: data, encoding: gb) { return s }
         return String(decoding: data, as: UTF8.self)
     }
