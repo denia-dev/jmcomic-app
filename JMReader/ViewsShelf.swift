@@ -174,6 +174,14 @@ struct BookshelfView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 controls
+                if !shelf.lastImportStatus.isEmpty {
+                    Text(shelf.lastImportStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 4)
+                }
                 content
             }
             .navigationTitle("书架")
@@ -207,6 +215,7 @@ struct BookshelfView: View {
                 // which read as "picked a file, nothing happened at all".
                 switch result {
                 case .success(let urls) where !urls.isEmpty:
+                    shelf.noteImport("选择器返回成功：\(urls.count) 个文件")
                     Task {
                         let r = await shelf.importFiles(urls)
                         var parts: [String] = []
@@ -216,11 +225,13 @@ struct BookshelfView: View {
                         note = parts.isEmpty ? "没有导入任何文件" : parts.joined(separator: "\n")
                     }
                 case .failure(let error):
+                    shelf.noteImport("选择器返回失败：\(error.localizedDescription)")
                     Task {
                         try? await Task.sleep(nanoseconds: 350_000_000)
                         note = "选择器没能读取文件：\(error.localizedDescription)"
                     }
                 default:
+                    shelf.noteImport("选择器返回：空结果")
                     break
                 }
             }

@@ -6,9 +6,53 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B10000000000000000000001 /* Exceptions for "JMReader" folder in "JMReader" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Unrar/arccmt.cpp",
+				"Unrar/blake2s_sse.cpp",
+				"Unrar/blake2sp.cpp",
+				"Unrar/cmdfilter.cpp",
+				"Unrar/cmdmix.cpp",
+				"Unrar/coder.cpp",
+				"Unrar/crypt1.cpp",
+				"Unrar/crypt2.cpp",
+				"Unrar/crypt3.cpp",
+				"Unrar/crypt5.cpp",
+				"Unrar/hardlinks.cpp",
+				"Unrar/log.cpp",
+				"Unrar/model.cpp",
+				"Unrar/recvol3.cpp",
+				"Unrar/recvol5.cpp",
+				"Unrar/suballoc.cpp",
+				"Unrar/threadmisc.cpp",
+				"Unrar/uicommon.cpp",
+				"Unrar/uiconsole.cpp",
+				"Unrar/uisilent.cpp",
+				"Unrar/ulinks.cpp",
+				"Unrar/unpack15.cpp",
+				"Unrar/unpack20.cpp",
+				"Unrar/unpack30.cpp",
+				"Unrar/unpack50.cpp",
+				"Unrar/unpack50frag.cpp",
+				"Unrar/unpack50mt.cpp",
+				"Unrar/unpackinline.cpp",
+				"Unrar/uowners.cpp",
+				"Unrar/win32acl.cpp",
+				"Unrar/win32lnk.cpp",
+				"Unrar/win32stm.cpp",
+			);
+			target = A10000000000000000000006 /* JMReader */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A10000000000000000000001 /* JMReader */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B10000000000000000000001 /* Exceptions for "JMReader" folder in "JMReader" target */,
+			);
 			path = JMReader;
 			sourceTree = "<group>";
 		};
@@ -152,7 +196,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGNING_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 63;
+				CURRENT_PROJECT_VERSION = 64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "JM Reader";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
@@ -180,7 +224,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGNING_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 63;
+				CURRENT_PROJECT_VERSION = 64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "JM Reader";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;

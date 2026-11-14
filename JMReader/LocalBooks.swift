@@ -249,6 +249,28 @@ struct NovelChapter: Codable { var title: String; var text: String }
 final class LocalBookStore: ObservableObject {
     @Published private(set) var books: [LocalBook] = []
     @Published private(set) var isImporting = false
+
+    /// Canary for the import flow: shown under the bookshelf controls and
+    /// appended to LocalBooks/import-log.txt. It exists because the
+    /// picker -> import chain failed with ZERO visible reaction on the
+    /// owner's device (builds 61/62): if the picker completion never
+    /// fires, this line never changes; if it does fire, the line (and the
+    /// log) say exactly which step stopped.
+    @Published var lastImportStatus: String = ""
+
+    func noteImport(_ line: String) {
+        lastImportStatus = line
+        let stamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+        guard let data = "[\(stamp)] \(line)\n".data(using: .utf8) else { return }
+        let logURL = root.appendingPathComponent("import-log.txt")
+        if let handle = try? FileHandle(forWritingTo: logURL) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+        } else {
+            try? data.write(to: logURL, options: .atomic)
+        }
+    }
     /// Reading progress kept OFF the published surface (same lesson as the
     /// library store: publishing per page turn re-renders lists mid-scroll).
     /// `progressTick` is bumped when a reader closes so the shelf refreshes.
@@ -328,6 +350,7 @@ final class LocalBookStore: ObservableObject {
         guard !urls.isEmpty else { return ([], []) }
         isImporting = true
         defer { isImporting = false }
+        noteImport("开始导入 \(urls.count) 个文件")
         var added: [String] = []
         var failed: [String] = []
         let tmpRoot = root.appendingPathComponent("tmp-imports", isDirectory: true)
@@ -343,10 +366,12 @@ final class LocalBookStore: ObservableObject {
                 try FileManager.default.copyItem(at: url, to: copyURL)
             } catch {
                 if scoped { url.stopAccessingSecurityScopedResource() }
+                noteImport("拷贝失败 \(url.lastPathComponent)：\(error.localizedDescription)")
                 failed.append("\(url.lastPathComponent)：读取失败（\(error.localizedDescription)）")
                 continue
             }
             if scoped { url.stopAccessingSecurityScopedResource() }
+            noteImport("拷贝完成 \(url.lastPathComponent)，开始解析")
             do {
                 let book = try await Task.detached(priority: .userInitiated) {
                     try Self.stageImport(from: copyURL, root: self.root)
@@ -354,7 +379,9 @@ final class LocalBookStore: ObservableObject {
                 books.insert(book, at: 0)
                 persistIndex()
                 added.append(book.title)
+                noteImport("导入成功：\(book.title)")
             } catch {
+                noteImport("解析失败 \(url.lastPathComponent)：\(error.localizedDescription)")
                 failed.append("\(url.lastPathComponent)：\(error.localizedDescription)")
             }
             try? FileManager.default.removeItem(at: copyDir)
