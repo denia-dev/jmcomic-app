@@ -73,6 +73,31 @@ private enum ShelfItem: Identifiable {
     }
 }
 
+/// Scroll-linked shrink/fade for the 最近阅读 rail cells (iOS 17+;
+/// older systems just get the plain rail).
+private struct RailCellEffect: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.scrollTransition { cell, phase in
+                cell.scaleEffect(phase.isIdentity ? 1 : 0.9)
+                    .opacity(phase.isIdentity ? 1 : 0.45)
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private struct TargetLayoutIfAvailable: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.scrollTargetLayout()
+        } else {
+            content
+        }
+    }
+}
+
 struct BookshelfView: View {
     @EnvironmentObject var shelf: LocalBookStore
     @EnvironmentObject var downloads: DownloadManager
@@ -283,11 +308,13 @@ struct BookshelfView: View {
                                         recentReadCell(read)
                                     }
                                     .buttonStyle(.plain)
+                                    .modifier(RailCellEffect())
                                 }
                             }
                             .padding(.horizontal, 16)
+                            .modifier(TargetLayoutIfAvailable())
                         }
-                        .padding(.bottom, 6)
+                        .padding(.bottom, 10)
                     }
                     if items.isEmpty {
                         VStack(spacing: 10) {
@@ -352,6 +379,42 @@ struct BookshelfView: View {
         case 2: return "点右上角导入自己的漫画或小说\n支持 CBZ / ZIP / PDF / EPUB / TXT"
         default: return "下载的书和导入的漫画、小说都会放在这里"
         }
+    }
+
+    @ViewBuilder
+    private func destination(for item: ShelfItem) -> some View {
+        switch item {
+        case .download(let r):
+            LocalPdfView(url: r.fileURL, title: r.title)
+        case .local(let b):
+            localDestination(b)
+        }
+    }
+
+    @ViewBuilder
+    private func localDestination(_ book: LocalBook) -> some View {
+        switch book.kind {
+        case .comic: LocalComicReaderView(book: book)
+        case .pdf: LocalPdfView(url: shelf.fileURL(book, book.sourceName), title: book.title)
+        case .novel: NovelReaderView(book: book)
+        }
+    }
+
+    @ViewBuilder
+    private func cell(_ item: ShelfItem) -> some View {
+        switch item {
+        case .download(let r): DownloadCell(record: r)
+        case .local(let b): LocalBookCell(book: b)
+        }
+    }
+
+    private func recentReadCell(_ read: (albumId: String, entry: LibraryStore.ProgressEntry)) -> some View {
+        RemoteImage(path: ImagePipe.coverPath(albumId: read.albumId))
+            .aspectRatio(3 / 4, contentMode: .fill)
+            .frame(width: 96, height: 128)
+            .clipped()
+            .cornerRadius(10)
+            .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
     }
 
     @ViewBuilder
