@@ -1754,6 +1754,7 @@ struct ProfileStatsCard: View {
 
 struct SettingsView: View {
     @EnvironmentObject var blockStore: BlockTagStore
+    @EnvironmentObject var updater: UpdateChecker
     @AppStorage("settings.autoCheckIn") private var autoCheckIn = true
     @State private var storageBytes: Int64?
     @State private var apiModeText = "自动"
@@ -1793,6 +1794,32 @@ struct SettingsView: View {
                                ? nil : "\(blockStore.blockedTags.count + blockStore.blockedAuthors.count) 项") {
                         BlockedTagsView()
                     }
+                    Divider().padding(.leading, 52)
+                    Button {
+                        Task { await updater.check(manual: true) }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "arrow.up.circle")
+                                .foregroundColor(accentPink)
+                                .frame(width: 24)
+                            Text("检查更新").foregroundColor(.primary)
+                            Spacer()
+                            if updater.checking {
+                                ProgressView()
+                            } else if updater.hasUpdate {
+                                Text("有新版 v\(updater.latestVersion ?? "")")
+                                    .foregroundColor(accentPink)
+                            } else if updater.latestVersion != nil {
+                                Text("已是最新").foregroundColor(.secondary)
+                            } else {
+                                Text("当前 v\(updater.currentVersion)").foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.vertical, 6)
                 .glassSurface(RoundedRectangle(cornerRadius: 20, style: .continuous))

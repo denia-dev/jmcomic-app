@@ -9,6 +9,7 @@ struct JMReaderApp: App {
     @StateObject private var downloads = DownloadManager()
     @StateObject private var blockStore = BlockTagStore()
     @StateObject private var readingStats = ReadingStatsStore()
+    @StateObject private var updater = UpdateChecker()
 
     var body: some Scene {
         WindowGroup {
@@ -32,6 +33,19 @@ struct JMReaderApp: App {
                 await AutoCheckIn.runIfNeeded(account: account)
                 await LineStore.shared.refreshIfStale()
             }
+            .task { await updater.checkOnLaunch() }
+            .alert("有新版本 v\(updater.latestVersion ?? "")", isPresented: $updater.showPrompt) {
+                Button("去更新") {
+                    if let url = updater.latestURL {
+                        UIApplication.shared.open(url)
+                    }
+                    updater.showPrompt = false
+                }
+                Button("忽略此版本") { updater.ignoreCurrent() }
+                Button("稍后", role: .cancel) { updater.showPrompt = false }
+            } message: {
+                Text("当前版本 v\(updater.currentVersion)，新版本已发布。点「去更新」打开下载页，下载后重新签名安装即可。")
+            }
             .environmentObject(appState)
             .environmentObject(library)
             .environmentObject(history)
@@ -39,6 +53,7 @@ struct JMReaderApp: App {
             .environmentObject(downloads)
             .environmentObject(blockStore)
             .environmentObject(readingStats)
+            .environmentObject(updater)
         }
     }
 }
