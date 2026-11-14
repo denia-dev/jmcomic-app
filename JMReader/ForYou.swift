@@ -9,6 +9,7 @@ import SwiftUI
 // (mainTag 2), scored by the weights of the queries that surfaced them,
 // favorites excluded; the shelf grid applies the block filter on top.
 
+@MainActor
 enum TasteEngine {
     struct Profile {
         var tagWeights: [String: Int] = [:]
