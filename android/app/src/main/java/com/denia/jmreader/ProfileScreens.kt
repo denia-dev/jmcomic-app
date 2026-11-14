@@ -47,7 +47,7 @@ fun ProfileScreen(router: Router, account: AccountStore, library: LibraryStore) 
     var msg by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp)) {
+        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("个人", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))

@@ -10,8 +10,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.draw.shadow
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -119,13 +117,15 @@ fun JmApp(externalPdf: android.net.Uri? = null, onExternalPdfDone: () -> Unit = 
                 onFail = { onExternalPdfDone() })
             return@JmTheme
         }
-        val hazeState = remember { dev.chrisbanes.haze.HazeState() }
         val surface = androidx.compose.material3.MaterialTheme.colorScheme.surface
         val outline = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant
-        Box(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
-            Box(Modifier.fillMaxSize()
-                .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.statusBars)
-                .hazeSource(hazeState)) {
+        // The tab bar reserves its own strip at the bottom (Column layout),
+        // so page content NEVER slides underneath the capsule. The old
+        // overlay design let list text rest half-hidden behind the bar,
+        // which read as stray text smeared over the page.
+        Column(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
+            Box(Modifier.weight(1f).fillMaxWidth()
+                .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.statusBars)) {
                 val top = router.stack.lastOrNull()
                 if (top == null) {
                     HorizontalPager(state = pagerState) { page ->
@@ -153,8 +153,9 @@ fun JmApp(externalPdf: android.net.Uri? = null, onExternalPdfDone: () -> Unit = 
                 }
             }
             if (router.stack.isEmpty()) {
-                // iOS-style floating FROSTED glass tab bar (real backdrop blur via Haze;
-                // devices/emulators without RenderEffect fall back to a translucent scrim)
+                // Floating capsule tab bar in its own reserved strip (see the
+                // Column note above): pink-tinted selected item, near-opaque
+                // surface so nothing ever bleeds through it.
                 val items = listOf(
                     Triple("首页", Icons.Default.Home, 0),
                     Triple("分类", Icons.Default.Apps, 1),
@@ -163,17 +164,11 @@ fun JmApp(externalPdf: android.net.Uri? = null, onExternalPdfDone: () -> Unit = 
                 )
                 val capsule = androidx.compose.foundation.shape.RoundedCornerShape(percent = 50)
                 Box(
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    Modifier.fillMaxWidth()
                         .padding(horizontal = 24.dp, vertical = 12.dp)
                         .shadow(12.dp, capsule)
                         .clip(capsule)
-                        .hazeEffect(hazeState) {
-                            backgroundColor = surface
-                            tints = listOf(dev.chrisbanes.haze.HazeTint(surface.copy(alpha = 0.55f)))
-                            blurRadius = 24.dp
-                            noiseFactor = 0f
-                            fallbackTint = dev.chrisbanes.haze.HazeTint(surface.copy(alpha = 0.88f))
-                        }
+                        .background(surface.copy(alpha = 0.92f))
                         .border(1.dp, outline, capsule)
                         .padding(horizontal = 6.dp, vertical = 5.dp)
                 ) {
