@@ -28,10 +28,13 @@ struct ReaderView: View {
     @State private var sliderValue: Double = 0
     @State private var didInit = false
     @State private var displayIndex: Int = 0
-    /// Scroll mode: the user is pulling past the last page (footer hint),
-    /// and the latch that makes the pull fire "next chapter" only once.
+    /// Scroll mode pull-to-next-chapter: footer hint visibility, the
+    /// armed state (pulled far enough, waiting for release), the
+    /// once-per-chapter latch, and the instant scroll-reset counter.
     @State private var pullHint = false
+    @State private var endSwipeArmed = false
     @State private var endSwipeLatched = false
+    @State private var resetNonce = 0
     /// Chapters fetched ahead of time (the next-chapter preload fills this),
     /// so stepping to the next chapter doesn't wait on the network.
     @State private var chapterCache: [String: ChapterData] = [:]
@@ -114,6 +117,11 @@ struct ReaderView: View {
                     jumpTarget = nil
                 }
             }
+            .onChange(of: resetNonce) { _ in
+                // Chapter switches land on the first page instantly; the
+                // animated jumpTarget path stays for slider scrubs.
+                proxy.scrollTo(0, anchor: .top)
+            }
         }
     }
 
@@ -134,13 +142,15 @@ struct ReaderView: View {
                     Text("这一话加载失败，下拉或重进试试").foregroundColor(.gray)
                         .padding(.vertical, 60)
                 } else if !pages.isEmpty {
-                    Text(hasNextChapter && pullHint ? "— 继续上滑 进入下一话 —" : "— 本话完 —")
+                    Text(hasNextChapter && pullHint ? "— 松开进入下一话 —" : "— 本话完 —")
                         .foregroundColor(.gray).font(.footnote)
                         .padding(.vertical, 34)
                 }
             }
             .background {
-                ScrollViewTracker { off, total, vp in
+                ScrollViewTracker(onDragging: { dragging in
+                    handleDragState(dragging)
+                }) { off, total, vp in
                     handleScrollOffset(off, total: total, viewport: vp)
                 }
             }
@@ -334,7 +344,7 @@ struct ReaderView: View {
         let target = chapters[next]
         Task {
             await openChapter(id: target.id, page: 0)
-            jumpTarget = 0
+            resetNonce += 1
         }
     }
 
@@ -344,17 +354,25 @@ struct ReaderView: View {
     }
 
     /// Scroll mode: pulling past the end of the chapter (rubber-band
-    /// overscroll) steps to the next chapter, like the fork's Android
-    /// reader. Distance-triggered with a latch — iOS bounces back on
-    /// release, so waiting for the release would feel unresponsive.
-    /// Short chapters (content barely taller than the viewport) are
-    /// excluded so a pull can't fire on a chapter that doesn't scroll.
+    /// overscroll) arms the step to the next chapter; it fires on
+    /// release (handleDragState), so the content never swaps while the
+    /// finger is still pulling — build 73 fired mid-pull and the swap
+    /// felt stiff. Pulling back into the chapter disarms it. Short
+    /// chapters (content barely taller than the viewport) are excluded
+    /// so a pull can't arm on a chapter that doesn't scroll.
     private func handleScrollOffset(_ off: CGFloat, total: CGFloat, viewport: CGFloat) {
         guard !paged, !pages.isEmpty, viewport > 0, total > viewport + 50 else { return }
         let over = off - (total - viewport)
         let hint = over > 40
         if hint != pullHint { pullHint = hint }
-        guard over > 90, !endSwipeLatched, hasNextChapter else { return }
+        if over > 90 { endSwipeArmed = true }
+        else if over < 10 { endSwipeArmed = false }
+    }
+
+    private func handleDragState(_ dragging: Bool) {
+        guard !dragging, endSwipeArmed else { return }
+        endSwipeArmed = false
+        guard !paged, !endSwipeLatched, hasNextChapter else { return }
         endSwipeLatched = true
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         stepChapter(1)

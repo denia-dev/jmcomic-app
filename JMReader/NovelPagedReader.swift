@@ -51,6 +51,10 @@ final class NovelScrollMetrics: ObservableObject {
 // Direct UIScrollView tracking (KVO on contentOffset/contentSize).
 // The PreferenceKey route never delivered values out of the lazy stack.
 struct ScrollViewTracker: UIViewRepresentable {
+    /// Optional drag-state feed (comic reader's pull-to-next-chapter);
+    /// the novel reader leaves it nil. Declared before onChange so the
+    /// trailing-closure call sites keep binding to onChange.
+    var onDragging: ((Bool) -> Void)? = nil
     var onChange: (_ offset: CGFloat, _ contentHeight: CGFloat, _ viewport: CGFloat) -> Void
 
     func makeUIView(context: Context) -> UIView {
@@ -62,6 +66,7 @@ struct ScrollViewTracker: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {
         context.coordinator.onChange = onChange
+        context.coordinator.onDragging = onDragging
         if context.coordinator.scrollView == nil {
             DispatchQueue.main.async { context.coordinator.attach(from: uiView) }
         }
@@ -71,9 +76,11 @@ struct ScrollViewTracker: UIViewRepresentable {
 
     final class Coordinator {
         var onChange: (_ offset: CGFloat, _ contentHeight: CGFloat, _ viewport: CGFloat) -> Void
+        var onDragging: ((Bool) -> Void)?
         weak var scrollView: UIScrollView?
         private var offsetObs: NSKeyValueObservation?
         private var sizeObs: NSKeyValueObservation?
+        private var lastDragging: Bool?
 
         init(onChange: @escaping (_ offset: CGFloat, _ contentHeight: CGFloat, _ viewport: CGFloat) -> Void) {
             self.onChange = onChange
@@ -101,6 +108,11 @@ struct ScrollViewTracker: UIViewRepresentable {
 
         private func report(_ sv: UIScrollView) {
             onChange(sv.contentOffset.y, sv.contentSize.height, sv.bounds.height)
+            let d = sv.isDragging
+            if d != lastDragging {
+                lastDragging = d
+                onDragging?(d)
+            }
         }
     }
 }
