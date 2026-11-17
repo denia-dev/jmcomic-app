@@ -28,6 +28,10 @@ struct ReaderView: View {
     @State private var sliderValue: Double = 0
     @State private var didInit = false
     @State private var displayIndex: Int = 0
+    /// Scroll mode: the user is pulling past the last page (footer hint),
+    /// and the latch that makes the pull fire "next chapter" only once.
+    @State private var pullHint = false
+    @State private var endSwipeLatched = false
     /// Chapters fetched ahead of time (the next-chapter preload fills this),
     /// so stepping to the next chapter doesn't wait on the network.
     @State private var chapterCache: [String: ChapterData] = [:]
@@ -63,6 +67,7 @@ struct ReaderView: View {
             // both scroll and paged modes (both funnel through currentPage).
             readingStats.recordPage(episodeId: chapterId, pageIndex: newPage, chapterPages: pages.count)
         }
+        .onChange(of: chapterId) { _ in endSwipeLatched = false }
                         .task {
             if !didInit {
                 didInit = true
@@ -129,8 +134,14 @@ struct ReaderView: View {
                     Text("这一话加载失败，下拉或重进试试").foregroundColor(.gray)
                         .padding(.vertical, 60)
                 } else if !pages.isEmpty {
-                    Text("— 本话完 —").foregroundColor(.gray).font(.footnote)
+                    Text(hasNextChapter && pullHint ? "— 继续上滑 进入下一话 —" : "— 本话完 —")
+                        .foregroundColor(.gray).font(.footnote)
                         .padding(.vertical, 34)
+                }
+            }
+            .background {
+                ScrollViewTracker { off, total, vp in
+                    handleScrollOffset(off, total: total, viewport: vp)
                 }
             }
         }
@@ -321,7 +332,32 @@ struct ReaderView: View {
         let next = idx + delta
         guard chapters.indices.contains(next) else { return }
         let target = chapters[next]
-        Task { await openChapter(id: target.id, page: 0) }
+        Task {
+            await openChapter(id: target.id, page: 0)
+            jumpTarget = 0
+        }
+    }
+
+    private var hasNextChapter: Bool {
+        guard let idx = chapterIndex else { return false }
+        return idx < chapters.count - 1
+    }
+
+    /// Scroll mode: pulling past the end of the chapter (rubber-band
+    /// overscroll) steps to the next chapter, like the fork's Android
+    /// reader. Distance-triggered with a latch — iOS bounces back on
+    /// release, so waiting for the release would feel unresponsive.
+    /// Short chapters (content barely taller than the viewport) are
+    /// excluded so a pull can't fire on a chapter that doesn't scroll.
+    private func handleScrollOffset(_ off: CGFloat, total: CGFloat, viewport: CGFloat) {
+        guard !paged, !pages.isEmpty, viewport > 0, total > viewport + 50 else { return }
+        let over = off - (total - viewport)
+        let hint = over > 40
+        if hint != pullHint { pullHint = hint }
+        guard over > 90, !endSwipeLatched, hasNextChapter else { return }
+        endSwipeLatched = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        stepChapter(1)
     }
 
     private func saveProgress() {

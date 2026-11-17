@@ -81,6 +81,17 @@ struct ChapterRef: Identifiable, Hashable {
     var id: String      // photo/chapter id
     var name: String
     var sort: Int
+
+    /// The series payload often carries "" or a bare episode number ("9")
+    /// instead of a real label — build the display label the same way the
+    /// Android client does (fixed there 2026-11-04) instead of showing the
+    /// raw value; iOS showed blank rows for the empty ones.
+    static func displayName(raw: String, sort: Int) -> String {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return "第\(sort)话" }
+        if t.allSatisfy({ $0.isNumber }) { return "第\(t)话" }
+        return t
+    }
 }
 
 struct AlbumDetail {
@@ -114,10 +125,13 @@ struct AlbumDetail {
         isFavorite = anyInt(d["is_favorite"]) != 0
         var chs: [ChapterRef] = []
         if let series = d["series"] as? [Any] {
-            for case let s as [String: Any] in series {
+            for (i, item) in series.enumerated() {
+                guard let s = item as [String: Any] else { continue }
+                let rawSort = anyInt(s["sort"])
+                let sort = rawSort > 0 ? rawSort : i + 1
                 chs.append(ChapterRef(id: anyString(s["id"]),
-                                      name: anyString(s["name"]),
-                                      sort: anyInt(s["sort"])))
+                                      name: ChapterRef.displayName(raw: anyString(s["name"]), sort: sort),
+                                      sort: sort))
             }
         }
         chapters = chs.sorted { $0.sort < $1.sort }
@@ -139,10 +153,13 @@ struct ChapterData {
         images = anyStringList(d["images"])
         var chs: [ChapterRef] = []
         if let series = d["series"] as? [Any] {
-            for case let s as [String: Any] in series {
+            for (i, item) in series.enumerated() {
+                guard let s = item as [String: Any] else { continue }
+                let rawSort = anyInt(s["sort"])
+                let sort = rawSort > 0 ? rawSort : i + 1
                 chs.append(ChapterRef(id: anyString(s["id"]),
-                                      name: anyString(s["name"]),
-                                      sort: anyInt(s["sort"])))
+                                      name: ChapterRef.displayName(raw: anyString(s["name"]), sort: sort),
+                                      sort: sort))
             }
         }
         series = chs.sorted { $0.sort < $1.sort }
