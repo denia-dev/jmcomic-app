@@ -126,7 +126,7 @@ struct AlbumDetail {
         var chs: [ChapterRef] = []
         if let series = d["series"] as? [Any] {
             for (i, item) in series.enumerated() {
-                guard let s = item as [String: Any] else { continue }
+                guard let s = item as? [String: Any] else { continue }
                 let rawSort = anyInt(s["sort"])
                 let sort = rawSort > 0 ? rawSort : i + 1
                 chs.append(ChapterRef(id: anyString(s["id"]),
@@ -154,7 +154,7 @@ struct ChapterData {
         var chs: [ChapterRef] = []
         if let series = d["series"] as? [Any] {
             for (i, item) in series.enumerated() {
-                guard let s = item as [String: Any] else { continue }
+                guard let s = item as? [String: Any] else { continue }
                 let rawSort = anyInt(s["sort"])
                 let sort = rawSort > 0 ? rawSort : i + 1
                 chs.append(ChapterRef(id: anyString(s["id"]),
