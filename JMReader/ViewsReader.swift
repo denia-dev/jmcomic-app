@@ -28,12 +28,17 @@ struct ReaderView: View {
     @State private var sliderValue: Double = 0
     @State private var didInit = false
     @State private var displayIndex: Int = 0
-    /// Scroll mode pull-to-next-chapter: footer hint visibility, the
-    /// armed state (pulled far enough, waiting for release), the
-    /// once-per-chapter latch, and the instant scroll-reset counter.
-    @State private var pullHint = false
-    @State private var endSwipeArmed = false
-    @State private var endSwipeLatched = false
+    /// Scroll mode pull-to-next-chapter transition: the live overscroll
+    /// distance driving the next chapter's preview strip, the cover /
+    /// reveal flags for the release transition, the chapter being
+    /// transitioned to, its preloaded first-page preview, and the
+    /// instant scroll-reset counter.
+    @State private var pullOver: CGFloat = 0
+    @State private var coverFull = false
+    @State private var coverHidden = false
+    @State private var transitioning = false
+    @State private var transitionTargetId: String?
+    @State private var nextPreview: UIImage?
     @State private var resetNonce = 0
     /// Chapters fetched ahead of time (the next-chapter preload fills this),
     /// so stepping to the next chapter doesn't wait on the network.
@@ -54,6 +59,7 @@ struct ReaderView: View {
             Color.black.ignoresSafeArea()
             content
             if showChrome { chromeOverlay }
+            if pullOver > 0 || coverFull { pullOverlay }
             if loading { ProgressView().tint(.white) }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -70,7 +76,8 @@ struct ReaderView: View {
             // both scroll and paged modes (both funnel through currentPage).
             readingStats.recordPage(episodeId: chapterId, pageIndex: newPage, chapterPages: pages.count)
         }
-        .onChange(of: chapterId) { _ in endSwipeLatched = false }
+        .onChange(of: chapterId) { _ in pullOver = 0 }
+        .task(id: chapterId) { await loadNextPreview() }
                         .task {
             if !didInit {
                 didInit = true
@@ -142,7 +149,7 @@ struct ReaderView: View {
                     Text("这一话加载失败，下拉或重进试试").foregroundColor(.gray)
                         .padding(.vertical, 60)
                 } else if !pages.isEmpty {
-                    Text(hasNextChapter && pullHint ? "— 松开进入下一话 —" : "— 本话完 —")
+                    Text("— 本话完 —")
                         .foregroundColor(.gray).font(.footnote)
                         .padding(.vertical, 34)
                 }
@@ -353,29 +360,109 @@ struct ReaderView: View {
         return idx < chapters.count - 1
     }
 
-    /// Scroll mode: pulling past the end of the chapter (rubber-band
-    /// overscroll) arms the step to the next chapter; it fires on
-    /// release (handleDragState), so the content never swaps while the
-    /// finger is still pulling — build 73 fired mid-pull and the swap
-    /// felt stiff. Pulling back into the chapter disarms it. Short
-    /// chapters (content barely taller than the viewport) are excluded
-    /// so a pull can't arm on a chapter that doesn't scroll.
-    private func handleScrollOffset(_ off: CGFloat, total: CGFloat, viewport: CGFloat) {
-        guard !paged, !pages.isEmpty, viewport > 0, total > viewport + 50 else { return }
-        let over = off - (total - viewport)
-        let hint = over > 40
-        if hint != pullHint { pullHint = hint }
-        if over > 90 { endSwipeArmed = true }
-        else if over < 10 { endSwipeArmed = false }
+    private var nextChapterRef: ChapterRef? {
+        guard let idx = chapterIndex, chapters.indices.contains(idx + 1) else { return nil }
+        return chapters[idx + 1]
     }
 
+    /// The pull-transition overlay: the next chapter's first page rises
+    /// from the bottom edge in step with the overscroll pull; on a
+    /// committed release it expands to cover the screen, the chapter
+    /// swaps underneath, and the cover crossfades away — the overlay's
+    /// page and the new chapter's first page are the same image in the
+    /// same layout, so the reveal is seamless.
+    private var pullOverlay: some View {
+        GeometryReader { geo in
+            let h = coverFull ? geo.size.height : min(pullOver, 340)
+            ZStack(alignment: .top) {
+                Color.black
+                if let nextPreview {
+                    Image(uiImage: nextPreview)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: geo.size.width, alignment: .top)
+                }
+                if let next = nextChapterRef, h > 60 || coverFull {
+                    Text("下一话 · \(next.name)")
+                        .font(.footnote).foregroundColor(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .glassSurface(RoundedRectangle(cornerRadius: 10))
+                        .padding(.top, coverFull ? 54 : 10)
+                }
+                if coverFull, let target = transitionTargetId, chapterId != target {
+                    ProgressView().tint(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(width: geo.size.width, height: h)
+            .clipped()
+            .opacity(coverHidden ? 0 : 1)
+            .offset(y: geo.size.height - h)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    /// Loads the next chapter's first page as the pull preview. Waits
+    /// for the next-chapter preload to land the chapter data in
+    /// chapterCache instead of fetching it a second time; the image
+    /// itself comes through ImagePipe, which the preload also warms.
+    private func loadNextPreview() async {
+        nextPreview = nil
+        guard let next = nextChapterRef else { return }
+        var data = chapterCache[next.id]
+        for _ in 0..<40 where data == nil {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled { return }
+            data = chapterCache[next.id]
+        }
+        guard let data, let file = data.images.first else { return }
+        let stem = (file as NSString).deletingPathExtension
+        nextPreview = await ImagePipe.shared.load(
+            path: ImagePipe.pagePath(chapterId: next.id, file: file),
+            scrambleNum: ImagePipe.splitNum(chapterId: next.id, stem: stem))
+    }
+
+    /// Scroll mode: publish the live overscroll distance so the pull
+    /// overlay follows the finger. Quantized — the tracker reports
+    /// every offset tick, and only visible changes should re-render.
+    /// Short chapters (content barely taller than the viewport) are
+    /// excluded so a pull can't start on a chapter that doesn't scroll.
+    private func handleScrollOffset(_ off: CGFloat, total: CGFloat, viewport: CGFloat) {
+        guard !transitioning else { return }
+        guard !paged, !pages.isEmpty, viewport > 0, total > viewport + 50, hasNextChapter else {
+            if pullOver != 0 { pullOver = 0 }
+            return
+        }
+        let over = off - (total - viewport)
+        let v = over > 0 ? over : 0
+        if abs(v - pullOver) >= 2 || (v == 0) != (pullOver == 0) { pullOver = v }
+    }
+
+    /// On release past the pull threshold, run the cover transition:
+    /// the preview expands to full screen, the chapter swaps underneath
+    /// (invisible), then the cover crossfades away onto the new
+    /// chapter's first page. Below the threshold nothing happens — the
+    /// rubber band pulls the preview back down on its own.
     private func handleDragState(_ dragging: Bool) {
-        guard !dragging, endSwipeArmed else { return }
-        endSwipeArmed = false
-        guard !paged, !endSwipeLatched, hasNextChapter else { return }
-        endSwipeLatched = true
+        guard !dragging, !paged, !transitioning, pullOver >= 110,
+              let target = nextChapterRef else { return }
+        transitioning = true
+        transitionTargetId = target.id
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        stepChapter(1)
+        withAnimation(.easeOut(duration: 0.22)) { coverFull = true }
+        Task {
+            try? await Task.sleep(nanoseconds: 230_000_000)
+            await openChapter(id: target.id, page: 0)
+            resetNonce += 1
+            withAnimation(.easeInOut(duration: 0.25)) { coverHidden = true }
+            try? await Task.sleep(nanoseconds: 260_000_000)
+            coverFull = false
+            coverHidden = false
+            transitionTargetId = nil
+            transitioning = false
+            pullOver = 0
+        }
     }
 
     private func saveProgress() {
