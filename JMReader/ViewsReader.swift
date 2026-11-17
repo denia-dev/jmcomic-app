@@ -26,6 +26,13 @@ struct ReaderView: View {
     @State private var loadFailed = false
     @State private var jumpTarget: Int?
     @State private var sliderValue: Double = 0
+    /// Slider interaction state: swipeAnywhereBack is a simultaneous
+    /// gesture, so a long rightward slider drag also reads as a back
+    /// swipe and pops the reader. While the slider is being dragged —
+    /// and for a beat after it ends, to cover callback ordering — the
+    /// back gesture is suppressed.
+    @State private var sliderEditing = false
+    @State private var sliderEditEndedAt = Date.distantPast
     @State private var didInit = false
     @State private var displayIndex: Int = 0
     /// Scroll mode pull-to-next-chapter transition: the live overscroll
@@ -64,7 +71,9 @@ struct ReaderView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .restoreSwipeBack()
-        .swipeAnywhereBack { dismiss() }
+        .swipeAnywhereBack(enabled: !sliderEditing) {
+            if Date().timeIntervalSince(sliderEditEndedAt) > 0.35 { dismiss() }
+        }
         .onChange(of: readerRTL) { _ in
             if paged { displayIndex = displayIndex(forLogical: currentPage) }
         }
@@ -262,7 +271,11 @@ struct ReaderView: View {
                         .font(.footnote).foregroundColor(accentPink)
                         .fixedSize()
                     Slider(value: $sliderValue, in: 0...Double(max(pages.count - 1, 1)), step: 1) { editing in
-                        if !editing { jumpTarget = Int(sliderValue) }
+                        sliderEditing = editing
+                        if !editing {
+                            sliderEditEndedAt = Date()
+                            jumpTarget = Int(sliderValue)
+                        }
                     }
                     .tint(accentPink)
                 }
@@ -445,7 +458,7 @@ struct ReaderView: View {
     /// chapter's first page. Below the threshold nothing happens — the
     /// rubber band pulls the preview back down on its own.
     private func handleDragState(_ dragging: Bool) {
-        guard !dragging, !paged, !transitioning, pullOver >= 110,
+        guard !dragging, !paged, !transitioning, pullOver >= 70,
               let target = nextChapterRef else { return }
         transitioning = true
         transitionTargetId = target.id
