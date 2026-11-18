@@ -11,6 +11,7 @@ struct JMReaderApp: App {
     @StateObject private var readingStats = ReadingStatsStore()
     @StateObject private var localBooks = LocalBookStore()
     @StateObject private var updater = UpdateChecker()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -35,6 +36,11 @@ struct JMReaderApp: App {
                 await LineStore.shared.refreshIfStale()
             }
             .task { await updater.checkOnLaunch() }
+            .onChange(of: scenePhase) { phase in
+                if phase == .background {
+                    Task { await CloudBackup.autoBackupIfNeeded() }
+                }
+            }
             .alert("有新版本 v\(updater.latestVersion ?? "")", isPresented: $updater.showPrompt) {
                 Button("去更新") {
                     if let url = updater.latestURL {

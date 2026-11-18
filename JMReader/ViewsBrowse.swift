@@ -1898,6 +1898,10 @@ struct SettingsView: View {
                 .padding(.vertical, 6)
                 .glassSurface(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
+                if ADMIN_BUILD {
+                    BackupSettingsCard()
+                }
+
                 Text("线路名单来自 JM 官方域名分发，只包含官方域名，不使用任何第三方镜像。")
                     .font(.caption).foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
