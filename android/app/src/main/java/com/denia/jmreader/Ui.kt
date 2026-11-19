@@ -149,15 +149,23 @@ object DownloadManager {
         context.getSharedPreferences(META_PREFS, Context.MODE_PRIVATE)
 
     fun albumIdOf(context: Context, file: File): String =
-        meta(context).getString(file.name, null)?.let { JSONObject(it).optString("albumId") }
+        meta(context).getString(file.name, null)?.let { runCatching { JSONObject(it).optString("albumId") }.getOrNull() }
             ?.takeIf { it.isNotEmpty() } ?: file.name.substringBefore('_')
 
     fun titleOf(context: Context, file: File): String =
-        meta(context).getString(file.name, null)?.let { JSONObject(it).optString("title") }
-            ?.takeIf { it.isNotEmpty() } ?: file.name.substringBeforeLast('.')
+        meta(context).getString(file.name, null)?.let { runCatching { JSONObject(it).optString("title") }.getOrNull() }
+            ?.takeIf { it.isNotEmpty() } ?: file.name.substringAfter('_', file.name).substringBeforeLast('.')
 
     fun categoryOf(context: Context, file: File): String =
-        meta(context).getString(file.name, null)?.let { JSONObject(it).optString("category") } ?: ""
+        meta(context).getString(file.name, null)?.let { runCatching { JSONObject(it).optString("category") }.getOrNull() } ?: ""
+
+    fun saveMeta(context: Context, file: File, albumId: String, title: String) {
+        val old = meta(context).getString(file.name, "{}") ?: "{}"
+        val obj = runCatching { JSONObject(old) }.getOrDefault(JSONObject())
+        obj.put("albumId", albumId)
+        obj.put("title", title)
+        meta(context).edit().putString(file.name, obj.toString()).apply()
+    }
 
     fun setCategory(context: Context, file: File, category: String) {
         val old = meta(context).getString(file.name, "{}") ?: "{}"
@@ -175,9 +183,14 @@ object DownloadManager {
         File(dir(context), ".staging-$albumId").apply { mkdirs() }
     private fun pageFile(stage: File, idx: Int) = File(stage, "%05d.jpg".format(idx))
 
-    fun files(context: Context): List<File> =
-        dir(context).listFiles { f -> f.isFile && (f.extension == "pdf" || f.extension == "cbz") }
+    fun files(context: Context): List<File> {
+        val result = dir(context).listFiles { f -> f.isFile && (f.extension == "pdf" || f.extension == "cbz") }
             ?.sortedByDescending { it.lastModified() } ?: emptyList()
+        val liveNames = result.mapTo(HashSet()) { it.name }
+        val stale = meta(context).all.keys.filter { it !in liveNames }
+        if (stale.isNotEmpty()) meta(context).edit().also { edit -> stale.forEach(edit::remove) }.apply()
+        return result
+    }
 
     fun share(context: Context, file: File) {
         val uri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
@@ -291,6 +304,7 @@ object DownloadManager {
                     doc.close()
                 }
                 exportToDownloads(appCtx, outFile)
+                saveMeta(appCtx, outFile, album.id, album.name)
                 stage.deleteRecursively()
                 withContext(Dispatchers.Main) { task.state = State.DONE }
             } catch (e: Exception) {

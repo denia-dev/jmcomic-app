@@ -650,7 +650,22 @@ fun DetailScreen(dest: DetailDest, router: Router, account: AccountStore, librar
                                             library.removeFavorite(dest.id)
                                             toast = "已取消收藏"
                                         } else toast = "已收藏"
-                                    } catch (e: Exception) { toast = "操作失败：${e.message}" }
+                                    } catch (e: Exception) {
+                                        val refreshed = JmApi.favoriteState(dest.id)
+                                        if (refreshed != null) {
+                                            fav = refreshed
+                                            if (refreshed) {
+                                                RemovedFavs.clear(dest.id)
+                                                toast = "操作响应丢失，已刷新：仍在收藏中"
+                                            } else {
+                                                RemovedFavs.add(dest.id)
+                                                library.removeFavorite(dest.id)
+                                                toast = "操作响应丢失，已刷新：已取消收藏"
+                                            }
+                                        } else {
+                                            toast = "收藏结果暂时无法确认，原状态已保留；请稍后刷新（${e.message ?: "网络错误"}）"
+                                        }
+                                    }
                                 }
                             }
                             else if (fav) { library.removeFavorite(dest.id); fav = false; toast = "已取消本地收藏" }
@@ -692,7 +707,18 @@ fun DetailScreen(dest: DetailDest, router: Router, account: AccountStore, librar
                                                     if (nowFav) { RemovedFavs.clear(dest.id); fav = true }
                                                     if (f.fid != "0") JmApi.folderMove(f.fid, dest.id)
                                                     toast = "已收藏到「${f.name}」"
-                                                } catch (e: Exception) { toast = "云端收藏失败：${e.message}" }
+                                                } catch (e: Exception) {
+                                                    val refreshed = JmApi.favoriteState(dest.id)
+                                                    if (refreshed != null) {
+                                                        fav = refreshed
+                                                        if (refreshed) RemovedFavs.clear(dest.id)
+                                                        else { RemovedFavs.add(dest.id); library.removeFavorite(dest.id) }
+                                                    }
+                                                    toast = if (refreshed == null)
+                                                        "收藏操作结果暂时无法确认，请稍后刷新（${e.message ?: "网络错误"}）"
+                                                    else if (refreshed) "已刷新收藏状态；收藏夹移动可能未完成"
+                                                    else "已刷新：作品当前不在收藏中"
+                                                }
                                             }
                                         }) { Text(f.name, color = Pink) }
                                     }
@@ -808,11 +834,11 @@ fun DownloadsScreen(router: Router) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(f.name, fontSize = 13.sp, maxLines = 1)
+                        Text(DownloadManager.titleOf(context, f), fontSize = 13.sp, maxLines = 1)
                         Text("%.1f MB".format(f.length() / 1048576.0), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = { DownloadManager.share(context, f) }) { Text("分享", color = Pink) }
-                    TextButton(onClick = { f.delete(); files = DownloadManager.files(context) }) { Text("删除") }
+                    TextButton(onClick = { DownloadManager.forgetMeta(context, f.name); f.delete(); files = DownloadManager.files(context) }) { Text("删除") }
                 }
                 HorizontalDivider(thickness = 0.5.dp)
             }

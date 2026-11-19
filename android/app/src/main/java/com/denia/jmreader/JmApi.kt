@@ -262,6 +262,31 @@ object JmApi {
         return Triple(d.optInt("total"), parseAlbums(d.optJSONArray("list")), folders)
     }
 
+    /** Refresh authoritative favorite state after a POST result becomes ambiguous.
+     * Null means the server state could not be determined. */
+    suspend fun favoriteState(aid: String): Boolean? {
+        return try {
+            val first = favorites(1)
+            val folders = first.third.ifEmpty { listOf(Folder("0", "默认收藏")) }
+            for (folder in folders) {
+                var page = 1
+                var total = 0
+                var pageSize = 0
+                do {
+                    val (count, items, _) = if (page == 1 && folder.fid == "0") first
+                        else favorites(page, folder.fid)
+                    total = count
+                    pageSize = items.size
+                    if (items.any { it.id == aid }) return true
+                    page++
+                } while (pageSize > 0 && page <= ((total + pageSize - 1) / pageSize).coerceAtLeast(1))
+            }
+            false
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     /** The favorite endpoint is a TOGGLE (verified live 2026-11-05): every
      * POST flips the server-side state and the response `type` reports what
      * actually happened ("add" / "remove"). Returns the state after the call. */
