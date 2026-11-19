@@ -29,12 +29,12 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+      - name: Build release APK
+        run: gradle --no-daemon assembleRelease
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: JMReader-optimized-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: JMReader-optimized-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
