@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId = "com.denia.jmreader"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 22
         versionName = "2.31"
     }

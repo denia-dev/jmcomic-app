@@ -6,20 +6,46 @@ import UIKit
 // MARK: - minimal PDF writer (one image per page, streamed page by page)
 
 enum PdfWriter {
-    /// entries are (label, JPEG file on disk) in reading order; images are loaded one at a time.
+    /// Entries are (label, JPEG file on disk) in reading order.
+    /// A failed page aborts the export instead of silently producing a partial PDF.
     static func write(entries: [(name: String, file: URL)], to url: URL) throws {
         guard let first = entries.first,
               let firstImg = UIImage(contentsOfFile: first.file.path) else {
             throw NSError(domain: "PdfWriter", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "没有可写入的页面"])
         }
-        UIGraphicsBeginPDFContextToFile(url.path, CGRect(origin: .zero, size: firstImg.size), nil)
-        defer { UIGraphicsEndPDFContext() }
+
+        let fm = FileManager.default
+        let tempURL = url.deletingLastPathComponent()
+            .appendingPathComponent(".\(url.lastPathComponent).tmp-\(UUID().uuidString)")
+        var failedPages: [String] = []
+        UIGraphicsBeginPDFContextToFile(tempURL.path,
+                                        CGRect(origin: .zero, size: firstImg.size), nil)
+
         for e in entries {
-            guard let img = UIImage(contentsOfFile: e.file.path) else { continue }
-            UIGraphicsBeginPDFPageWithInfo(CGRect(origin: .zero, size: img.size), nil)
-            img.draw(in: CGRect(origin: .zero, size: img.size))
+            autoreleasepool {
+                guard let img = UIImage(contentsOfFile: e.file.path) else {
+                    failedPages.append(e.name)
+                    return
+                }
+                UIGraphicsBeginPDFPageWithInfo(CGRect(origin: .zero, size: img.size), nil)
+                img.draw(in: CGRect(origin: .zero, size: img.size))
+            }
         }
+        UIGraphicsEndPDFContext()
+
+        if !failedPages.isEmpty {
+            try? fm.removeItem(at: tempURL)
+            let names = failedPages.prefix(8).joined(separator: ", ")
+            let suffix = failedPages.count > 8 ? " 等 \(failedPages.count) 页" : ""
+            throw NSError(domain: "PdfWriter", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "PDF 生成失败，无法读取页面：\(names)\(suffix)"])
+        }
+
+        // Publish only a complete PDF; an interrupted export cannot leave a
+        // seemingly valid partial file at the final path.
+        try? fm.removeItem(at: url)
+        try fm.moveItem(at: tempURL, to: url)
     }
 }
 

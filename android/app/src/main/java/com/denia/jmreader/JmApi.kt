@@ -105,6 +105,16 @@ object JmApi {
     private suspend fun requestData(method: String, path: String, params: Map<String, String>, form: Map<String, String>?, skipBootstrap: Boolean = false, host: String? = null): Any {
         if (skipBootstrap) return executeOnce(method, path, params, form, host ?: apiHost)
         bootstrap()
+        // POST endpoints include toggle and other side-effecting operations.
+        // If the server accepted a request but the response was lost, retrying
+        // can execute the operation twice. GET remains retryable; POST is not.
+        if (method == "POST") {
+            return try {
+                executeOnce(method, path, params, form)
+            } catch (e: java.io.IOException) {
+                throw ApiException("网络连接失败，请检查网络后重试")
+            }
+        }
         for (attempt in 0..2) {
             try {
                 return executeOnce(method, path, params, form)
