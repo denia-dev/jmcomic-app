@@ -105,6 +105,16 @@ object JmApi {
     private suspend fun requestData(method: String, path: String, params: Map<String, String>, form: Map<String, String>?, skipBootstrap: Boolean = false, host: String? = null): Any {
         if (skipBootstrap) return executeOnce(method, path, params, form, host ?: apiHost)
         bootstrap()
+        // POST endpoints include toggle and other side-effecting operations.
+        // If the server accepted a request but the response was lost, retrying
+        // can execute the operation twice. GET remains retryable; POST is not.
+        if (method == "POST") {
+            return try {
+                executeOnce(method, path, params, form)
+            } catch (e: java.io.IOException) {
+                throw ApiException("网络连接失败，请检查网络后重试")
+            }
+        }
         for (attempt in 0..2) {
             try {
                 return executeOnce(method, path, params, form)
@@ -250,6 +260,31 @@ object JmApi {
             }
         }
         return Triple(d.optInt("total"), parseAlbums(d.optJSONArray("list")), folders)
+    }
+
+    /** Refresh authoritative favorite state after a POST result becomes ambiguous.
+     * Null means the server state could not be determined. */
+    suspend fun favoriteState(aid: String): Boolean? {
+        return try {
+            val first = favorites(1)
+            val folders = first.third.ifEmpty { listOf(Folder("0", "默认收藏")) }
+            for (folder in folders) {
+                var page = 1
+                var total = 0
+                var pageSize = 0
+                do {
+                    val (count, items, _) = if (page == 1 && folder.fid == "0") first
+                        else favorites(page, folder.fid)
+                    total = count
+                    pageSize = items.size
+                    if (items.any { it.id == aid }) return true
+                    page++
+                } while (pageSize > 0 && page <= ((total + pageSize - 1) / pageSize).coerceAtLeast(1))
+            }
+            false
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /** The favorite endpoint is a TOGGLE (verified live 2026-11-05): every

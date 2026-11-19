@@ -1,7 +1,7 @@
 name: Build unsigned IPA
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   push:

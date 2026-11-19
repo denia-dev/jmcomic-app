@@ -139,7 +139,7 @@ fun JmApp(externalPdf: android.net.Uri? = null, onExternalPdfDone: () -> Unit = 
                 if (top == null) {
                     HorizontalPager(state = pagerState) { page ->
                         when (page) {
-                            0 -> HomeScreen(router, account, library,
+                            0 -> HomeScreen(router,
                                 goProfile = { scope.launch { pagerState.animateScrollToPage(2) } },
                                 goSearch = { scope.launch { pagerState.animateScrollToPage(3) } })
                             1 -> BookshelfScreen(router)
