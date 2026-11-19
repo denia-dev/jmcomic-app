@@ -86,9 +86,12 @@ object JmApi {
     suspend fun call(path: String, params: Map<String, String> = emptyMap()): JSONObject =
         request("GET", path, params, null)
 
-    /** Signed form POST. */
-    suspend fun callForm(path: String, form: Map<String, String>): JSONObject =
-        request("POST", path, emptyMap(), form)
+    /** Signed form POST. [retryable] is only for idempotent endpoints
+     *  (login, daily check-in): re-sending them after a lost response is a
+     *  no-op server-side. Toggle-style POSTs (favorite) must stay
+     *  single-attempt — a blind retry could execute the operation twice. */
+    suspend fun callForm(path: String, form: Map<String, String>, retryable: Boolean = false): JSONObject =
+        request("POST", path, emptyMap(), form, retryable = retryable)
 
     /** Signed GET for endpoints whose decrypted `data` is a bare JSON array
      *  (promote / latest / random_recommend — shapes verified live 2026-11-02). */
@@ -97,18 +100,21 @@ object JmApi {
         return d as? JSONArray ?: JSONArray()
     }
 
-    private suspend fun request(method: String, path: String, params: Map<String, String>, form: Map<String, String>?, skipBootstrap: Boolean = false, host: String? = null): JSONObject {
-        val d = requestData(method, path, params, form, skipBootstrap, host)
+    private suspend fun request(method: String, path: String, params: Map<String, String>, form: Map<String, String>?, skipBootstrap: Boolean = false, host: String? = null, retryable: Boolean = false): JSONObject {
+        val d = requestData(method, path, params, form, skipBootstrap, host, retryable)
         return d as? JSONObject ?: JSONObject()
     }
 
-    private suspend fun requestData(method: String, path: String, params: Map<String, String>, form: Map<String, String>?, skipBootstrap: Boolean = false, host: String? = null): Any {
+    private suspend fun requestData(method: String, path: String, params: Map<String, String>, form: Map<String, String>?, skipBootstrap: Boolean = false, host: String? = null, retryable: Boolean = false): Any {
         if (skipBootstrap) return executeOnce(method, path, params, form, host ?: apiHost)
         bootstrap()
-        // POST endpoints include toggle and other side-effecting operations.
-        // If the server accepted a request but the response was lost, retrying
-        // can execute the operation twice. GET remains retryable; POST is not.
-        if (method == "POST") {
+        // Toggle-style POSTs stay single-attempt: if the server accepted the
+        // request but the response was lost, retrying can execute the
+        // operation twice. GETs and idempotent POSTs (retryable) rotate
+        // hosts and retry — JM's edge cuts connections often enough that a
+        // single attempt silently kills check-in (regression report
+        // 2026-11-19: auto check-in "gone" on vc24, worked on vc22).
+        if (method == "POST" && !retryable) {
             return try {
                 executeOnce(method, path, params, form)
             } catch (e: java.io.IOException) {
@@ -244,7 +250,7 @@ object JmApi {
     suspend fun chapter(id: String): JSONObject = call("chapter", mapOf("id" to id))
 
     suspend fun login(username: String, password: String): JSONObject =
-        callForm("login", mapOf("username" to username, "password" to password))
+        callForm("login", mapOf("username" to username, "password" to password), retryable = true)
 
     data class Folder(val fid: String, val name: String)
 
@@ -312,7 +318,7 @@ object JmApi {
 
     suspend fun daily(userId: String): JSONObject = call("daily", mapOf("user_id" to userId))
     suspend fun dailyCheck(userId: String, dailyId: String): JSONObject =
-        callForm("daily_chk", mapOf("user_id" to userId, "daily_id" to dailyId))
+        callForm("daily_chk", mapOf("user_id" to userId, "daily_id" to dailyId), retryable = true)
 
     // ---------- images ----------
     fun coverUrl(id: String) = "https://$imgHost/media/albums/${id}_3x4.jpg"
@@ -326,6 +332,23 @@ object JmApi {
             if (!resp.isSuccessful) throw ApiException("图片加载失败 ${resp.code}")
             resp.body?.bytes() ?: throw ApiException("图片为空")
         }
+    }
+
+    /** Fetch one reader page, rotating through the image-host pool: the
+     *  first host that answers wins and is promoted to the front of the
+     *  pool. Image hosts flap per ISP/region on direct connections, and
+     *  the single-host URL had no fallback (regression report 2026-11-19:
+     *  every image dead when the front host was unreachable). */
+    suspend fun fetchPhoto(chapterId: String, file: String): ByteArray {
+        var last: Exception? = null
+        for (h in Lines.orderedImgHosts()) {
+            try {
+                val b = fetchBytes("https://$h/media/photos/$chapterId/$file")
+                Lines.promoteImgHost(h)
+                return b
+            } catch (e: Exception) { last = e }
+        }
+        throw last ?: ApiException("图片加载失败")
     }
 
     /** Raw JSON POST for our own worker endpoints (folder registry). */

@@ -113,6 +113,17 @@ object Lines {
         JmApi.imgHost = currentImgHost()
     }
 
+    /** A host that just served an image moves to the front of the pool, so
+     *  one unreachable front host stops breaking every image. A manual pin
+     *  is the user's own choice and is left alone. */
+    fun promoteImgHost(host: String) {
+        if (imgManual.isNotEmpty() || !imgPool.contains(host)) return
+        if (imgPool.firstOrNull() == host) { JmApi.imgHost = host; return }
+        imgPool = listOf(host) + imgPool.filter { it != host }
+        persist()
+        JmApi.imgHost = currentImgHost()
+    }
+
     /** /setting reports an official image host; adopt it into the pool. */
     fun noteSettingImgHost(host: String) {
         val h = host.removePrefix("https://").removePrefix("http://").trimEnd('/')

@@ -27,6 +27,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,10 +105,17 @@ class Router {
 // ---------- shared bits ----------
 @Composable
 fun CoverImage(id: String, modifier: Modifier = Modifier) {
+    // Walk the image-host pool on failure instead of dying with the front
+    // host; the host that answers gets promoted for every later image.
+    val hosts = Lines.orderedImgHosts()
+    var idx by remember(id) { mutableStateOf(0) }
+    val host = hosts.getOrNull(idx) ?: JmApi.imgHost
     AsyncImage(
-        model = JmApi.coverUrl(id),
+        model = "https://$host/media/albums/${id}_3x4.jpg",
         contentDescription = null,
         contentScale = ContentScale.Crop,
+        onSuccess = { Lines.promoteImgHost(host) },
+        onError = { if (idx < hosts.size - 1) idx++ },
         modifier = modifier
             .aspectRatio(3f / 4f)
             .clip(RoundedCornerShape(10.dp))
@@ -268,7 +277,7 @@ object DownloadManager {
                                 while (!ok && attempt < 3) {
                                     attempt++
                                     try {
-                                        val bytes = JmApi.fetchBytes(JmApi.photoUrl(cid, f))
+                                        val bytes = JmApi.fetchPhoto(cid, f)
                                         val bmp = Descramble.decode(bytes, cid, f)
                                         out.outputStream().buffered().use { bmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }
                                         if (!bmp.isRecycled) bmp.recycle()

@@ -237,7 +237,7 @@ fun ReaderScreen(dest: ReaderDest, router: Router) {
                     val nfiles = (0 until (nimgs?.length() ?: 0)).map { nimgs!!.optString(it) }
                     for ((n, f) in nfiles.take(6).withIndex()) {
                         if (ReaderCache.get(next.first, f) == null) {
-                            val bytes = JmApi.fetchBytes(JmApi.photoUrl(next.first, f))
+                            val bytes = JmApi.fetchPhoto(next.first, f)
                             ReaderCache.put(next.first, f, Descramble.decode(bytes, next.first, f))
                         }
                         if (n == 0) nextPreview = ReaderCache.get(next.first, f)
@@ -475,7 +475,7 @@ private fun ReaderPage(chapterId: String, file: String) {
     LaunchedEffect(chapterId, file) {
         if (bmp != null) return@LaunchedEffect
         try {
-            val bytes = JmApi.fetchBytes(JmApi.photoUrl(chapterId, file))
+            val bytes = JmApi.fetchPhoto(chapterId, file)
             val decoded = Descramble.decode(bytes, chapterId, file)
             ReaderCache.put(chapterId, file, decoded)
             bmp = decoded
