@@ -2,6 +2,7 @@ package com.denia.jmreader
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
@@ -85,6 +86,8 @@ data class DetailDest(val id: String) : Dest
 data class ReaderDest(val chapterId: String, val albumTitle: String, val albumId: String = "") : Dest
 data class AuthorDest(val name: String) : Dest
 data class CategoryDest(val slug: String, val name: String) : Dest
+data class LocalComicDest(val bookId: String) : Dest
+data class LocalNovelDest(val bookId: String) : Dest
 object DownloadsDest : Dest
 object BlockedTagsDest : Dest
 object StorageDest : Dest
@@ -140,6 +143,32 @@ object DownloadManager {
     }
     val tasks = mutableStateListOf<Task>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private const val META_PREFS = "jm.downloadMeta"
+
+    private fun meta(context: Context): SharedPreferences =
+        context.getSharedPreferences(META_PREFS, Context.MODE_PRIVATE)
+
+    fun albumIdOf(context: Context, file: File): String =
+        meta(context).getString(file.name, null)?.let { JSONObject(it).optString("albumId") }
+            ?.takeIf { it.isNotEmpty() } ?: file.name.substringBefore('_')
+
+    fun titleOf(context: Context, file: File): String =
+        meta(context).getString(file.name, null)?.let { JSONObject(it).optString("title") }
+            ?.takeIf { it.isNotEmpty() } ?: file.name.substringBeforeLast('.')
+
+    fun categoryOf(context: Context, file: File): String =
+        meta(context).getString(file.name, null)?.let { JSONObject(it).optString("category") } ?: ""
+
+    fun setCategory(context: Context, file: File, category: String) {
+        val old = meta(context).getString(file.name, "{}") ?: "{}"
+        val obj = runCatching { JSONObject(old) }.getOrDefault(JSONObject())
+        obj.put("category", category)
+        meta(context).edit().putString(file.name, obj.toString()).apply()
+    }
+
+    fun forgetMeta(context: Context, fileName: String) {
+        meta(context).edit().remove(fileName).apply()
+    }
 
     fun dir(context: Context): File = File(context.filesDir, "Downloads").apply { mkdirs() }
     private fun stagingDir(context: Context, albumId: String): File =
