@@ -6,11 +6,6 @@
 
 <p align="center">简洁、无广告的 JMComic 第三方阅读客户端<br>iOS 与 Android 双端原生，另有免安装的网页版</p>
 
-<p align="center">
-  <a href="https://github.com/denia-dev/jmcomic-app/releases/latest"><img src="https://img.shields.io/github/v/release/denia-dev/jmcomic-app" alt="最新版本"></a>
-  <img src="https://img.shields.io/github/downloads/denia-dev/jmcomic-app/total" alt="总下载量">
-</p>
-
 > 第三方客户端，与 JMComic 官方无关，仅供学习交流。使用需要 JMComic 账号（请先到官网注册），登录后收藏、历史与官网互通。
 
 ## 为什么用它
