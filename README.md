@@ -6,6 +6,8 @@
 
 <p align="center">简洁、无广告的 JMComic 第三方阅读客户端<br>iOS 与 Android 双端原生，另有免安装的网页版</p>
 
+**介绍页**：https://my-modules.peimingliang8.workers.dev/jm/intro.html
+
 > 第三方客户端，与 JMComic 官方无关，仅供学习交流。使用需要 JMComic 账号（请先到官网注册），登录后收藏、历史与官网互通。
 
 ## 为什么用它
