@@ -6,8 +6,6 @@
 
 <p align="center">简洁、无广告的 JMComic 第三方阅读客户端<br>iOS 与 Android 双端原生，另有免安装的网页版</p>
 
-**介绍页**：https://my-modules.peimingliang8.workers.dev/jm/intro.html
-
 > 第三方客户端，与 JMComic 官方无关，仅供学习交流。使用需要 JMComic 账号（请先到官网注册），登录后收藏、历史与官网互通。
 
 ## 为什么用它
@@ -43,3 +41,21 @@
 ## 版本历史
 
 见 [CHANGELOG.md](CHANGELOG.md)。
+
+---
+
+## English
+
+**JM Reader** — a clean, ad-free third-party reader for JMComic, native on iOS and Android, with a no-install web version.
+
+> Unofficial client, not affiliated with JMComic. For study and personal use only. A JMComic account is required; favourites and history sync with your account.
+
+- **Zero ads** — no splash screens, banners or pop-ups
+- **Truly native** — Swift on iOS, Kotlin on Android, no web wrappers
+- **Cloud sync** — favourites and reading history follow your account across devices
+- **Web version** — install a configuration profile and read in the browser, no signing needed on iOS
+
+Features: recommendations, search with filters and direct JM ID lookup, a vertical-scroll reader with tap-to-immerse and image descrambling, a local bookshelf with CBZ / ZIP / RAR / PDF / EPUB / TXT import, an EPUB novel reader, daily check-in, cloud favourites, offline downloads, tag/author blocking and switchable API routes.
+
+**Download:** grab the latest build from [Releases](https://github.com/denia-dev/jmcomic-app/releases/latest) — iOS IPA (self-sign, iOS 16+), iOS profile (no signing), or Android APK (Android 8.0+).
+Or open the web version directly: https://my-modules.peimingliang8.workers.dev/jm/index.html
